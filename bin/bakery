@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BIN_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/commands.sh
+source "$BIN_DIR/../lib/commands.sh"
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    deploy)
+      shift
+      cmd_deploy "$@"
+      ;;
+    pat)
+      shift
+      sub="${1:-}"
+      case "$sub" in
+        set)
+          shift
+          cmd_pat_set "$@"
+          ;;
+        get)
+          shift
+          cmd_pat_get "$@"
+          ;;
+        *)
+          cli_usage "usage: bakery pat <set|get>"
+          ;;
+      esac
+      ;;
+    list)
+      shift
+      cmd_list "$@"
+      ;;
+    status)
+      shift
+      cmd_status "$@"
+      ;;
+    logs)
+      shift
+      cmd_logs "$@"
+      ;;
+    stop)
+      shift
+      cmd_stop "$@"
+      ;;
+    restart)
+      shift
+      cmd_restart "$@"
+      ;;
+    env)
+      shift
+      sub="${1:-}"
+      case "$sub" in
+        set)
+          shift
+          cmd_env_set "$@"
+          ;;
+        get)
+          shift
+          cmd_env_get "$@"
+          ;;
+        *)
+          cli_usage "usage: bakery env <set|get> <domain>"
+          ;;
+      esac
+      ;;
+    update)
+      shift
+      cmd_update "$@"
+      ;;
+    daemon)
+      shift
+      cmd_daemon "$@"
+      ;;
+    help|-h|--help|"")
+      print_usage
+      ;;
+    *)
+      cli_usage "unknown command: $cmd"
+      ;;
+  esac
+}
+
+main "$@"
