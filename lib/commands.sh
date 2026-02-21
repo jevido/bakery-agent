@@ -213,15 +213,17 @@ cmd_update() {
   load_config
   require_cmd git
 
-  if [[ -d "$BAKERY_AGENT_DIR/.git" ]]; then
-    git -C "$BAKERY_AGENT_DIR" fetch origin
-    git -C "$BAKERY_AGENT_DIR" checkout "$UPDATE_BRANCH"
-    git -C "$BAKERY_AGENT_DIR" pull --ff-only origin "$UPDATE_BRANCH"
-    "$BAKERY_AGENT_DIR/install.sh" --update --source-dir "$BAKERY_AGENT_DIR"
-    return 0
+  if [[ ! -d "$BAKERY_AGENT_DIR/.git" ]]; then
+    mkdir -p "$BAKERY_ROOT"
+    rm -rf "$BAKERY_AGENT_DIR"
+    git clone --branch "$UPDATE_BRANCH" --single-branch "$UPDATE_REPO_URL" "$BAKERY_AGENT_DIR"
   fi
 
-  cli_die "$CLI_EXIT_PREREQ" "Agent source not found at $BAKERY_AGENT_DIR; reinstall first"
+  git -C "$BAKERY_AGENT_DIR" remote set-url origin "$UPDATE_REPO_URL"
+  git -C "$BAKERY_AGENT_DIR" fetch origin
+  git -C "$BAKERY_AGENT_DIR" checkout "$UPDATE_BRANCH"
+  git -C "$BAKERY_AGENT_DIR" pull --ff-only origin "$UPDATE_BRANCH"
+  "$BAKERY_AGENT_DIR/install.sh" --update --source-dir "$BAKERY_AGENT_DIR"
 }
 
 cmd_daemon() {
