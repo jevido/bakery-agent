@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "This installer requires bash. Run:" >&2
+  echo "curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | bash" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

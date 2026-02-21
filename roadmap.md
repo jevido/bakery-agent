@@ -152,7 +152,7 @@ The `bakery env set <domain>` command decrypts the current file, opens an editor
 A single command installs the agent:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | bash
 ```
 
 The install script:

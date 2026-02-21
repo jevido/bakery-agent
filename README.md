@@ -5,7 +5,7 @@ A lightweight deployment agent for deploying multiple containerized apps to a si
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | bash
 ```
 
 ## Core Commands
