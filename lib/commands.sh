@@ -16,6 +16,7 @@ bakery - lightweight VPS deployment agent
 
 Usage:
   bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+  bakery setup
   bakery pat set
   bakery pat get
   bakery list
@@ -35,6 +36,20 @@ cmd_deploy() {
   [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
   shift || true
   run_deploy "$domain" "$@"
+}
+
+cmd_setup() {
+  require_root
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    cli_die "$CLI_EXIT_PREREQ" "apt-get is required for setup on this host"
+  fi
+
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y podman nginx certbot python3-certbot-nginx openssl jq git curl logrotate
+
+  log "INFO" "Installed bakery runtime dependencies"
 }
 
 cmd_pat_set() {

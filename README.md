@@ -8,10 +8,17 @@ A lightweight deployment agent for deploying multiple containerized apps to a si
 curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh | bash
 ```
 
+Then install runtime dependencies:
+
+```bash
+sudo bakery setup
+```
+
 ## Core Commands
 
 ```bash
 bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+bakery setup
 bakery pat set
 bakery pat get
 bakery list

@@ -157,13 +157,19 @@ curl -fsSL https://raw.githubusercontent.com/jevido/bakery-agent/main/install.sh
 
 The install script:
 1. Checks for Debian 13
-2. Installs dependencies: `podman`, `nginx`, `certbot`, `openssl`, `jq`, `git`
+2. Installs bakery agent files, config, and service
 3. Creates the `bakery` system user
 4. Clones the agent repo to `/etc/bakery/agent/`
 5. Generates the OpenSSL secrets key
 6. Installs the `bakery` CLI to `/usr/local/bin/bakery`
 7. Installs and enables the `bakery-agent.service` systemd unit
 8. Creates the directory structure under `/etc/bakery/` and `/var/log/bakery/`
+
+Runtime dependencies are installed separately via:
+
+```bash
+bakery setup
+```
 
 ---
 

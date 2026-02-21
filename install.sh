@@ -56,12 +56,6 @@ warn_if_not_debian_13() {
   fi
 }
 
-install_deps() {
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y podman nginx certbot python3-certbot-nginx openssl jq git curl logrotate
-}
-
 ensure_user() {
   if ! id "$BAKERY_USER" >/dev/null 2>&1; then
     useradd --system --create-home --shell /usr/sbin/nologin "$BAKERY_USER"
@@ -95,7 +89,11 @@ ensure_key() {
 
   if [[ ! -f "$BAKERY_ROOT/secrets.key" ]]; then
     umask 077
-    openssl rand -hex 64 > "$BAKERY_ROOT/secrets.key"
+    if command -v openssl >/dev/null 2>&1; then
+      openssl rand -hex 64 > "$BAKERY_ROOT/secrets.key"
+    else
+      head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$BAKERY_ROOT/secrets.key"
+    fi
     chown "$BAKERY_USER":"$BAKERY_USER" "$BAKERY_ROOT/secrets.key"
     chmod 600 "$BAKERY_ROOT/secrets.key"
   fi
@@ -144,7 +142,6 @@ install_logrotate_config() {
 main() {
   require_root
   warn_if_not_debian_13
-  install_deps
   ensure_user
   ensure_dirs
   install_agent_files
@@ -157,6 +154,7 @@ main() {
   echo "bakery-agent installed successfully"
   echo "CLI: $BAKERY_BIN"
   echo "Config: $BAKERY_ROOT/bakery.conf"
+  echo "Next: run 'bakery setup' as root to install podman/nginx/certbot and other runtime dependencies."
 }
 
 main

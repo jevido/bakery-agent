@@ -12,6 +12,10 @@ main() {
       shift
       cmd_deploy "$@"
       ;;
+    setup)
+      shift
+      cmd_setup "$@"
+      ;;
     pat)
       shift
       sub="${1:-}"
