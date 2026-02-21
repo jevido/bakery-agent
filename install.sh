@@ -8,15 +8,23 @@ fi
 
 set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "bash" && "$SCRIPT_SOURCE" != "-bash" ]]; then
+  ROOT_DIR="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")" && pwd)"
+else
+  ROOT_DIR="$(pwd)"
+fi
 
 : "${BAKERY_ROOT:=/etc/bakery}"
 : "${BAKERY_LOG_ROOT:=/var/log/bakery}"
 : "${BAKERY_USER:=bakery}"
 : "${BAKERY_BIN:=/usr/local/bin/bakery}"
+: "${BAKERY_INSTALL_REPO:=https://github.com/jevido/bakery-agent}"
+: "${BAKERY_INSTALL_BRANCH:=main}"
 
 UPDATE_MODE=0
 SOURCE_DIR="$ROOT_DIR"
+INSTALL_TMP_DIR=""
 
 while (($#)); do
   case "$1" in
@@ -66,6 +74,42 @@ ensure_dirs() {
   mkdir -p "$BAKERY_ROOT/apps" "$BAKERY_LOG_ROOT/deploys"
   chown -R "$BAKERY_USER":"$BAKERY_USER" "$BAKERY_ROOT" "$BAKERY_LOG_ROOT"
   chmod 750 "$BAKERY_ROOT" "$BAKERY_LOG_ROOT"
+}
+
+cleanup_tmp() {
+  if [[ -n "${INSTALL_TMP_DIR:-}" && -d "$INSTALL_TMP_DIR" ]]; then
+    rm -rf "$INSTALL_TMP_DIR"
+  fi
+}
+
+resolve_source_dir() {
+  if [[ -f "$SOURCE_DIR/bin/bakery" && -f "$SOURCE_DIR/install.sh" ]]; then
+    return 0
+  fi
+
+  command -v curl >/dev/null 2>&1 || {
+    echo "curl is required to fetch bakery-agent source" >&2
+    exit 1
+  }
+  command -v tar >/dev/null 2>&1 || {
+    echo "tar is required to unpack bakery-agent source" >&2
+    exit 1
+  }
+
+  INSTALL_TMP_DIR="$(mktemp -d /tmp/bakery-agent-src.XXXXXX)"
+  trap cleanup_tmp EXIT
+
+  local archive_url
+  archive_url="${BAKERY_INSTALL_REPO%/}/archive/refs/heads/${BAKERY_INSTALL_BRANCH}.tar.gz"
+  curl -fsSL "$archive_url" | tar -xz -C "$INSTALL_TMP_DIR"
+
+  local extracted
+  extracted="$(find "$INSTALL_TMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  [[ -n "$extracted" ]] || {
+    echo "Failed to resolve source directory from $archive_url" >&2
+    exit 1
+  }
+  SOURCE_DIR="$extracted"
 }
 
 install_agent_files() {
@@ -142,6 +186,7 @@ install_logrotate_config() {
 main() {
   require_root
   warn_if_not_debian_13
+  resolve_source_dir
   ensure_user
   ensure_dirs
   install_agent_files
