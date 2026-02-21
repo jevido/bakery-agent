@@ -175,7 +175,7 @@ install_bin() {
 install_systemd_unit() {
   cp "$BAKERY_ROOT/agent/systemd/bakery-agent.service" /etc/systemd/system/bakery-agent.service
   systemctl daemon-reload
-  systemctl enable --now bakery-agent.service
+  systemctl enable bakery-agent.service
 }
 
 install_logrotate_config() {
@@ -200,6 +200,7 @@ main() {
   echo "CLI: $BAKERY_BIN"
   echo "Config: $BAKERY_ROOT/bakery.conf"
   echo "Next: run 'bakery setup' as root to install podman/nginx/certbot and other runtime dependencies."
+  echo "Then start the agent: systemctl start bakery-agent.service"
 }
 
 main

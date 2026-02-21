@@ -12,6 +12,7 @@ Then install runtime dependencies:
 
 ```bash
 sudo bakery setup
+sudo systemctl restart bakery-agent.service
 ```
 
 ## Core Commands
