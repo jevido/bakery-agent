@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SOURCE_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SOURCE_PATH="$LINK_TARGET"
+  else
+    SOURCE_PATH="$(cd -- "$(dirname -- "$SOURCE_PATH")" && cd -- "$(dirname -- "$LINK_TARGET")" && pwd)/$(basename -- "$LINK_TARGET")"
+  fi
+done
+
+BIN_DIR="$(cd -- "$(dirname -- "$SOURCE_PATH")" && pwd)"
 # shellcheck source=lib/commands.sh
 source "$BIN_DIR/../lib/commands.sh"
 
