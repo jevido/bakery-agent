@@ -190,6 +190,17 @@ install_logrotate_config() {
   chmod 644 /etc/logrotate.d/bakery-agent
 }
 
+install_sudoers_policy() {
+  if [[ ! -d /etc/sudoers.d ]]; then
+    return 0
+  fi
+
+  cat > /etc/sudoers.d/bakery-agent <<'CFG'
+bakery ALL=(root) NOPASSWD: /usr/bin/cp, /usr/bin/ln, /usr/sbin/nginx, /bin/systemctl, /usr/bin/certbot
+CFG
+  chmod 440 /etc/sudoers.d/bakery-agent
+}
+
 main() {
   require_root
   warn_if_not_debian_13
@@ -201,6 +212,7 @@ main() {
   ensure_config
   install_bin
   install_logrotate_config
+  install_sudoers_policy
   install_systemd_unit
 
   echo "bakery-agent installed successfully"

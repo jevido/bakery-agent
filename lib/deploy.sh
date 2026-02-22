@@ -13,6 +13,17 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/ports.sh"
 DEPLOY_LOG_FILE=""
 DEPLOY_LOCK_FD=""
 
+run_privileged() {
+  if "$@"; then
+    return 0
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n "$@"
+    return $?
+  fi
+  return 1
+}
+
 acquire_deploy_lock() {
   local domain="$1"
   local lock_file
@@ -301,8 +312,10 @@ server {
 CFG
 
   if [[ -d "$NGINX_SITES_AVAILABLE" && -d "$NGINX_SITES_ENABLED" ]]; then
-    cp "$app_conf" "$NGINX_SITES_AVAILABLE/$domain.conf"
-    ln -sfn "$NGINX_SITES_AVAILABLE/$domain.conf" "$NGINX_SITES_ENABLED/$domain.conf"
+    run_privileged cp "$app_conf" "$NGINX_SITES_AVAILABLE/$domain.conf" || \
+      die "Failed to write nginx site config. Ensure bakery can sudo cp (or run deploy as root)."
+    run_privileged ln -sfn "$NGINX_SITES_AVAILABLE/$domain.conf" "$NGINX_SITES_ENABLED/$domain.conf" || \
+      die "Failed to link nginx site config. Ensure bakery can sudo ln (or run deploy as root)."
   fi
 }
 
@@ -319,11 +332,11 @@ setup_ssl() {
   fi
 
   if [[ -n "$CERTBOT_EMAIL" ]]; then
-    certbot --nginx -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" || {
+    run_privileged certbot --nginx -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" || {
       log "WARN" "Certbot failed for $domain. Confirm DNS A/AAAA record points to this VPS and retry deploy."
     }
   else
-    certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email || {
+    run_privileged certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email || {
       log "WARN" "Certbot failed for $domain. Set CERTBOT_EMAIL and confirm DNS points to this VPS."
     }
   fi
@@ -521,8 +534,8 @@ run_deploy() {
     run_stage "6" "Configuring nginx + SSL"
     generate_nginx_conf "$domain" "$port"
     if command -v nginx >/dev/null 2>&1; then
-      nginx -t
-      systemctl reload nginx || nginx -s reload || true
+      run_privileged nginx -t || die "Failed nginx config test; ensure bakery can sudo nginx (or run deploy as root)."
+      run_privileged systemctl reload nginx || run_privileged nginx -s reload || true
     fi
     setup_ssl "$domain"
   else
