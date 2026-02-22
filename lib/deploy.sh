@@ -155,6 +155,26 @@ cleanup_old_images() {
   done
 }
 
+cleanup_old_domain_containers() {
+  local domain="$1"
+  local keep_container_id="$2"
+  local -a container_ids
+  local cid
+
+  mapfile -t container_ids < <(
+    podman_exec ps -a \
+      --filter "label=bakery.domain=$domain" \
+      --format '{{.ID}}'
+  )
+
+  for cid in "${container_ids[@]:-}"; do
+    [[ -n "$cid" ]] || continue
+    if [[ "$cid" != "$keep_container_id" ]]; then
+      podman_exec rm -f "$cid" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 detect_repo() {
   local domain="$1"
   local explicit_repo="${2:-}"
@@ -513,6 +533,7 @@ run_deploy() {
   decrypt_env_to_file "$domain" "$env_tmp"
   common_run_args=(
     -d
+    --restart unless-stopped
     --name "$container_name"
     --label "bakery.domain=$domain"
     --label "bakery.managed=true"
@@ -565,10 +586,7 @@ run_deploy() {
   run_stage "7" "Marking success"
   state_write "$domain" "$state_repo" "$container_id" "$image_id" "$port" "running" "$expose" "$previous_container_id" "$state_branch"
 
-  if [[ -n "$previous_container_id" ]]; then
-    podman_exec stop "$previous_container_id" >/dev/null 2>&1 || true
-    podman_exec rm "$previous_container_id" >/dev/null 2>&1 || true
-  fi
+  cleanup_old_domain_containers "$domain" "$container_id"
 
   run_stage "7" "Applying image cleanup policy (keep latest ${IMAGE_RETENTION_COUNT})"
   cleanup_old_images "$domain" "$IMAGE_RETENTION_COUNT"

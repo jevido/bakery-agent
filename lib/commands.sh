@@ -102,6 +102,14 @@ podman_exec_for_container() {
   return 1
 }
 
+podman_for_domain_context() {
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    podman_as_bakery "$@"
+    return $?
+  fi
+  podman_exec "$@"
+}
+
 print_usage() {
   cat <<'USAGE'
 bakery - lightweight VPS deployment agent
@@ -476,6 +484,7 @@ cmd_list() {
 refresh_state_domain() {
   local domain="$1"
   local file container_id runtime_status
+  local repo branch image port expose discovered_container discovered_status discovered_image discovered_port
 
   file="$(state_file "$domain")"
   if ! state_validate_file "$file" "$domain"; then
@@ -483,6 +492,11 @@ refresh_state_domain() {
     return 0
   fi
 
+  repo="$(jq -r '.repo // empty' "$file")"
+  branch="$(jq -r '.branch // empty' "$file")"
+  image="$(jq -r '.image // empty' "$file")"
+  port="$(jq -r '.port // 0' "$file")"
+  expose="$(jq -r '.expose // false' "$file")"
   container_id="$(jq -r '.container_id // empty' "$file")"
   if [[ -z "$container_id" ]]; then
     state_update_status "$domain" "missing"
@@ -493,6 +507,23 @@ refresh_state_domain() {
   if runtime_status="$(podman_exec_for_container "$container_id" container inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null)"; then
     state_update_status "$domain" "$runtime_status"
     log "INFO" "Refreshed $domain status=$runtime_status"
+    return 0
+  fi
+
+  discovered_container="$(podman_for_domain_context ps -a --filter "label=bakery.domain=$domain" --filter "status=running" --sort created --format '{{.ID}}' | tail -n1)"
+  if [[ -n "$discovered_container" ]]; then
+    discovered_status="$(podman_for_domain_context container inspect --format '{{.State.Status}}' "$discovered_container" 2>/dev/null || true)"
+    discovered_image="$(podman_for_domain_context container inspect --format '{{.Image}}' "$discovered_container" 2>/dev/null || true)"
+    discovered_port="$(podman_for_domain_context port "$discovered_container" 2>/dev/null | awk -F'[: ]+' 'NR==1 {print $NF}')"
+    [[ -n "$discovered_status" ]] || discovered_status="running"
+    [[ -n "$discovered_image" ]] || discovered_image="$image"
+    if [[ -n "$discovered_port" && "$discovered_port" =~ ^[0-9]+$ ]]; then
+      port="$discovered_port"
+      expose="true"
+    fi
+
+    state_write "$domain" "$repo" "$discovered_container" "$discovered_image" "$port" "$discovered_status" "$expose" "$container_id" "$branch"
+    log "INFO" "Refreshed $domain by runtime discovery status=$discovered_status container=$discovered_container"
     return 0
   fi
 
