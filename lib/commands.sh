@@ -287,7 +287,7 @@ cmd_setup() {
   apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs passt nginx certbot python3-certbot-nginx openssl jq git curl logrotate sudo
 
   if id bakery >/dev/null 2>&1; then
-    local subuid_start subgid_start
+    local subuid_start subgid_start bakery_uid bakery_home runtime_dir cfg_dir storage_cfg
     subuid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subuid 2>/dev/null || echo 100000)"
     subgid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subgid 2>/dev/null || echo 100000)"
 
@@ -297,6 +297,33 @@ cmd_setup() {
     if ! grep -q '^bakery:' /etc/subgid 2>/dev/null; then
       printf 'bakery:%s:65536\n' "$subgid_start" >> /etc/subgid
     fi
+
+    bakery_uid="$(id -u bakery)"
+    bakery_home="$(getent passwd bakery | cut -d: -f6)"
+    runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
+    cfg_dir="$bakery_home/.config/containers"
+    storage_cfg="$cfg_dir/storage.conf"
+
+    mkdir -p "$runtime_dir" "$cfg_dir" "$bakery_home/.local/share/containers/storage"
+    chown -R bakery:bakery "$runtime_dir" "$cfg_dir" "$bakery_home/.local/share/containers"
+    chmod 700 "$runtime_dir"
+
+    if [[ -f "$storage_cfg" ]]; then
+      if grep -q '^runroot *=.*/run/user/' "$storage_cfg"; then
+        sed -i "s|^runroot *=.*|runroot = \"$runtime_dir/containers\"|" "$storage_cfg"
+      fi
+    else
+      cat > "$storage_cfg" <<CFG
+[storage]
+driver = "overlay"
+runroot = "$runtime_dir/containers"
+graphroot = "$bakery_home/.local/share/containers/storage"
+CFG
+      chown bakery:bakery "$storage_cfg"
+      chmod 600 "$storage_cfg"
+    fi
+
+    sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
   fi
 
   mkdir -p /etc/containers/registries.conf.d
