@@ -413,6 +413,25 @@ health_check() {
   return 1
 }
 
+verify_nginx_cutover() {
+  local domain="$1"
+  local attempts=0
+
+  while (( attempts < DEPLOY_HEALTH_RETRIES )); do
+    if curl -kfsS --resolve "$domain:443:127.0.0.1" "https://$domain/" >/dev/null 2>&1; then
+      return 0
+    fi
+    if curl -fsS -H "Host: $domain" "http://127.0.0.1/" >/dev/null 2>&1; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep "$DEPLOY_HEALTH_INTERVAL"
+  done
+
+  log "ERROR" "Nginx cutover verification failed for $domain"
+  return 1
+}
+
 ensure_container_persisted() {
   local domain="$1"
   local container_id="$2"
@@ -591,6 +610,8 @@ run_deploy() {
       run_privileged systemctl reload nginx || run_privileged nginx -s reload || true
     fi
     setup_ssl "$domain"
+    run_stage "6" "Verifying nginx cutover"
+    verify_nginx_cutover "$domain" || die "Nginx cutover failed; previous container kept running"
   else
     run_stage "6" "Skipping routing (no EXPOSE or nginx disabled)"
   fi
