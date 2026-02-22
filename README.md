@@ -19,6 +19,7 @@ sudo systemctl restart bakery-agent.service
 
 ```bash
 bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+bakery remove <domain>
 bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
 bakery setup
 bakery pat set
@@ -67,6 +68,14 @@ You can generate a deploy SSH key and a prefilled workflow template with:
 
 ```bash
 sudo bakery bootstrap app.example.com --repo https://github.com/org/repo.git --branch main --host your.vps.host --ssh-user bakery
+```
+
+If you change domain names:
+1. Deploy the new domain.
+2. Remove old domain resources:
+
+```bash
+sudo bakery remove old.example.com
 ```
 
 ## Smoke Test

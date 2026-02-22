@@ -22,6 +22,10 @@ main() {
       shift
       cmd_deploy "$@"
       ;;
+    remove)
+      shift
+      cmd_remove "$@"
+      ;;
     bootstrap)
       shift
       cmd_bootstrap "$@"

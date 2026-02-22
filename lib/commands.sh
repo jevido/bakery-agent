@@ -16,6 +16,7 @@ bakery - lightweight VPS deployment agent
 
 Usage:
   bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+  bakery remove <domain>
   bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
   bakery setup
   bakery pat set
@@ -37,6 +38,68 @@ cmd_deploy() {
   [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
   shift || true
   run_deploy "$domain" "$@"
+}
+
+cmd_remove() {
+  local domain="${1:-}"
+  [[ -n "$domain" ]] || cli_usage "usage: bakery remove <domain>"
+
+  load_config
+  ensure_base_dirs
+  require_cmd podman
+
+  local app_dir state container_id prev_container_id
+  local -a containers images
+  app_dir="$(domain_dir "$domain")"
+  state="$(state_file "$domain")"
+  container_id=""
+  prev_container_id=""
+
+  if [[ -f "$state" ]] && state_validate_file "$state" "$domain"; then
+    container_id="$(jq -r '.container_id // empty' "$state")"
+    prev_container_id="$(jq -r '.previous_container_id // empty' "$state")"
+  fi
+
+  if [[ -n "$container_id" ]]; then
+    containers+=("$container_id")
+  fi
+  if [[ -n "$prev_container_id" ]]; then
+    containers+=("$prev_container_id")
+  fi
+
+  while IFS= read -r cid; do
+    [[ -n "$cid" ]] || continue
+    if [[ ! " ${containers[*]} " =~ " ${cid} " ]]; then
+      containers+=("$cid")
+    fi
+  done < <(podman ps -a --filter "label=bakery.domain=$domain" --format '{{.ID}}')
+
+  local cid
+  for cid in "${containers[@]:-}"; do
+    podman rm -f "$cid" >/dev/null 2>&1 || true
+  done
+
+  if [[ "$NGINX_ENABLED" == "1" ]]; then
+    rm -f "$app_dir/nginx.conf"
+    rm -f "$NGINX_SITES_ENABLED/$domain.conf"
+    rm -f "$NGINX_SITES_AVAILABLE/$domain.conf"
+    if command -v nginx >/dev/null 2>&1; then
+      nginx -t >/dev/null 2>&1 && (systemctl reload nginx || nginx -s reload || true)
+    fi
+  fi
+
+  while IFS= read -r img; do
+    [[ -n "$img" ]] || continue
+    images+=("$img")
+  done < <(podman image ls --filter "label=bakery.managed=true" --filter "label=bakery.domain=$domain" --format '{{.ID}}')
+
+  local img
+  for img in "${images[@]:-}"; do
+    podman rmi "$img" >/dev/null 2>&1 || true
+  done
+
+  rm -rf "$app_dir"
+  log "INFO" "Removed app resources for $domain"
 }
 
 detect_default_host() {
