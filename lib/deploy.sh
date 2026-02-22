@@ -111,6 +111,10 @@ run_deploy_cleanup() {
   local clone_dir="${13}"
   local env_tmp="${14}"
 
+  # RETURN traps are global for subsequent function returns in this shell;
+  # clear it immediately so cleanup only runs once for this deploy call.
+  trap - RETURN
+
   if [[ "$rc" -ne 0 ]]; then
     rollback_deploy "$domain" "$repo" "$branch" "$failed_container_id" "$failed_image_id" "$failed_port" "$failed_expose" "$previous_container_id" "$previous_image" "$previous_port" "$previous_expose" || \
       log "ERROR" "Rollback encountered errors for $domain"
