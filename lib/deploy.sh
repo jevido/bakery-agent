@@ -14,14 +14,18 @@ DEPLOY_LOG_FILE=""
 DEPLOY_LOCK_FD=""
 
 run_privileged() {
-  if "$@"; then
-    return 0
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+    return $?
   fi
+
   if command -v sudo >/dev/null 2>&1; then
     sudo -n "$@"
     return $?
   fi
-  return 1
+
+  "$@"
+  return $?
 }
 
 acquire_deploy_lock() {
@@ -472,7 +476,7 @@ run_deploy() {
   effective_cpu_limit="$EFFECTIVE_CPU_LIMIT"
   effective_memory_limit="$EFFECTIVE_MEMORY_LIMIT"
 
-  trap 'run_deploy_cleanup $? "$domain" "$state_repo" "$state_branch" "$container_id" "$image_id" "$port" "$expose" "$previous_container_id" "$previous_image" "$previous_port" "$previous_expose" "$clone_dir" "$env_tmp"' RETURN
+  trap 'run_deploy_cleanup $? "${domain:-}" "${state_repo:-}" "${state_branch:-}" "${container_id:-}" "${image_id:-}" "${port:-0}" "${expose:-false}" "${previous_container_id:-}" "${previous_image:-}" "${previous_port:-0}" "${previous_expose:-false}" "${clone_dir:-}" "${env_tmp:-}"' RETURN
 
   run_stage "1" "Cloning $repo (branch=$branch)"
   clone_repo "$domain" "$repo" "$branch" "$clone_dir"
