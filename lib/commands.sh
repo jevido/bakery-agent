@@ -243,7 +243,7 @@ cmd_setup() {
 
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y podman nginx certbot python3-certbot-nginx openssl jq git curl logrotate
+  apt-get install -y podman uidmap slirp4netns fuse-overlayfs nginx certbot python3-certbot-nginx openssl jq git curl logrotate
 
   if id bakery >/dev/null 2>&1; then
     local subuid_start subgid_start
