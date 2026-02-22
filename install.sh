@@ -66,7 +66,14 @@ warn_if_not_debian_13() {
 
 ensure_user() {
   if ! id "$BAKERY_USER" >/dev/null 2>&1; then
-    useradd --system --create-home --shell /usr/sbin/nologin "$BAKERY_USER"
+    useradd --system --create-home --shell /bin/bash "$BAKERY_USER"
+    return 0
+  fi
+
+  local current_shell
+  current_shell="$(getent passwd "$BAKERY_USER" | cut -d: -f7)"
+  if [[ "$current_shell" == "/usr/sbin/nologin" || "$current_shell" == "/sbin/nologin" ]]; then
+    usermod -s /bin/bash "$BAKERY_USER"
   fi
 }
 

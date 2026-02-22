@@ -70,6 +70,8 @@ You can generate a deploy SSH key and a prefilled workflow template with:
 sudo bakery bootstrap app.example.com --repo https://github.com/org/repo.git --branch main --host your.vps.host --ssh-user bakery
 ```
 
+Note: the `bakery` user must have a valid login shell (for example `/bin/bash`) so GitHub SSH actions can execute `bakery ...` commands.
+
 If you change domain names:
 1. Deploy the new domain.
 2. Remove old domain resources:
