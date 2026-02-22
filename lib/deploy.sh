@@ -391,6 +391,15 @@ health_check() {
   return 1
 }
 
+ensure_container_persisted() {
+  local domain="$1"
+  local container_id="$2"
+
+  if ! podman container exists "$container_id" >/dev/null 2>&1; then
+    die "Container missing before finalize for $domain (container_id=$container_id)"
+  fi
+}
+
 run_deploy() {
   local domain="$1"
   shift
@@ -549,6 +558,8 @@ run_deploy() {
   else
     run_stage "6" "Skipping routing (no EXPOSE or nginx disabled)"
   fi
+
+  ensure_container_persisted "$domain" "$container_id"
 
   run_stage "7" "Marking success"
   state_write "$domain" "$state_repo" "$container_id" "$image_id" "$port" "running" "$expose" "$previous_container_id" "$state_branch"
