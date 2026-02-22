@@ -95,12 +95,54 @@ json_escape() {
   printf '%s' "$1" | jq -Rr @json
 }
 
-# Rootless podman often requires a writable XDG_RUNTIME_DIR in non-interactive SSH sessions.
-if [[ "$(id -u)" -ne 0 ]]; then
-  if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -d "${XDG_RUNTIME_DIR:-}" || ! -w "${XDG_RUNTIME_DIR:-}" ]]; then
-    XDG_RUNTIME_DIR="$BAKERY_TMP_ROOT/bakery-xdg-$(id -u)"
-    mkdir -p "$XDG_RUNTIME_DIR"
-    chmod 700 "$XDG_RUNTIME_DIR" || true
-    export XDG_RUNTIME_DIR
+ensure_rootless_podman_env() {
+  [[ "$(id -u)" -ne 0 ]] || return 0
+  [[ -n "${_BAKERY_ROOTLESS_READY:-}" ]] && return 0
+
+  local uid user home runtime_dir cfg_dir storage_cfg containers_cfg graphroot
+  uid="$(id -u)"
+  user="$(id -un 2>/dev/null || true)"
+  home="${HOME:-}"
+  if [[ -z "$home" && -n "$user" ]]; then
+    home="$(getent passwd "$user" | cut -d: -f6 || true)"
   fi
-fi
+
+  runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$uid"
+  mkdir -p "$runtime_dir" "$runtime_dir/containers"
+  chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
+  export XDG_RUNTIME_DIR="$runtime_dir"
+
+  # The managed deployment user is bakery; keep its Podman config deterministic.
+  if [[ "$user" == "bakery" && -n "$home" ]]; then
+    cfg_dir="$home/.config/containers"
+    graphroot="$home/.local/share/containers/storage"
+    storage_cfg="$cfg_dir/storage.conf"
+    containers_cfg="$cfg_dir/containers.conf"
+
+    mkdir -p "$cfg_dir" "$graphroot"
+    cat > "$storage_cfg" <<CFG
+[storage]
+driver = "overlay"
+runroot = "$runtime_dir/containers"
+graphroot = "$graphroot"
+CFG
+    chmod 600 "$storage_cfg" >/dev/null 2>&1 || true
+
+    cat > "$containers_cfg" <<'CFG'
+[engine]
+runtime = "crun"
+
+[engine.runtimes]
+crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
+CFG
+    chmod 600 "$containers_cfg" >/dev/null 2>&1 || true
+
+    if command -v podman >/dev/null 2>&1; then
+      podman system migrate >/dev/null 2>&1 || true
+    fi
+  fi
+
+  _BAKERY_ROOTLESS_READY=1
+}
+
+ensure_rootless_podman_env
