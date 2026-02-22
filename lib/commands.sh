@@ -10,6 +10,22 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/state.sh"
 # shellcheck source=lib/deploy.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/deploy.sh"
 
+ensure_bakery_xdg_runtime_dir() {
+  local bakery_uid runtime_dir
+  bakery_uid="$(id -u bakery)"
+  runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
+  mkdir -p "$runtime_dir"
+  chown bakery:bakery "$runtime_dir" >/dev/null 2>&1 || true
+  chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
+  printf '%s\n' "$runtime_dir"
+}
+
+podman_as_bakery() {
+  local runtime_dir
+  runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman "$@"
+}
+
 podman_exec_for_container() {
   local container_id="$1"
   shift
@@ -20,8 +36,8 @@ podman_exec_for_container() {
   fi
 
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
-    if sudo -u bakery -H podman container exists "$container_id" >/dev/null 2>&1; then
-      sudo -u bakery -H podman "$@"
+    if podman_as_bakery container exists "$container_id" >/dev/null 2>&1; then
+      podman_as_bakery "$@"
       return $?
     fi
   fi
@@ -87,16 +103,21 @@ cmd_remove() {
     containers+=("$prev_container_id")
   fi
 
+  local podman_cmd="podman"
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    podman_cmd="podman_as_bakery"
+  fi
+
   while IFS= read -r cid; do
     [[ -n "$cid" ]] || continue
     if [[ ! " ${containers[*]} " =~ " ${cid} " ]]; then
       containers+=("$cid")
     fi
-  done < <(podman ps -a --filter "label=bakery.domain=$domain" --format '{{.ID}}')
+  done < <($podman_cmd ps -a --filter "label=bakery.domain=$domain" --format '{{.ID}}')
 
   local cid
   for cid in "${containers[@]:-}"; do
-    podman rm -f "$cid" >/dev/null 2>&1 || true
+    $podman_cmd rm -f "$cid" >/dev/null 2>&1 || true
   done
 
   if [[ "$NGINX_ENABLED" == "1" ]]; then
@@ -111,11 +132,11 @@ cmd_remove() {
   while IFS= read -r img; do
     [[ -n "$img" ]] || continue
     images+=("$img")
-  done < <(podman image ls --filter "label=bakery.managed=true" --filter "label=bakery.domain=$domain" --format '{{.ID}}')
+  done < <($podman_cmd image ls --filter "label=bakery.managed=true" --filter "label=bakery.domain=$domain" --format '{{.ID}}')
 
   local img
   for img in "${images[@]:-}"; do
-    podman rmi "$img" >/dev/null 2>&1 || true
+    $podman_cmd rmi "$img" >/dev/null 2>&1 || true
   done
 
   rm -rf "$app_dir"
