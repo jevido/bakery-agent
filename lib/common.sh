@@ -163,6 +163,7 @@ CFG
   cat > "$containers_cfg" <<'CFG'
 [engine]
 runtime = "crun"
+cgroup_manager = "cgroupfs"
 
 [engine.runtimes]
 crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
@@ -214,5 +215,5 @@ podman_exec() {
   home="$(resolve_current_user_home || true)"
   graphroot="$home/.local/share/containers/storage"
 
-  command podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+  command podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
 }

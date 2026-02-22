@@ -51,6 +51,7 @@ CFG
   cat > "$containers_cfg" <<'CFG'
 [engine]
 runtime = "crun"
+cgroup_manager = "cgroupfs"
 
 [engine.runtimes]
 crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
@@ -74,7 +75,7 @@ podman_as_bakery() {
   (
     cd "$bakery_home" || exit 1
     sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" \
-      podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+      podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
   )
 }
 
@@ -393,6 +394,7 @@ CFG
     cat > "$containers_cfg" <<'CFG'
 [engine]
 runtime = "crun"
+cgroup_manager = "cgroupfs"
 
 [engine.runtimes]
 crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
