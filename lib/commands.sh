@@ -59,7 +59,10 @@ CFG
   chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
   chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
 
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
+  (
+    cd "$bakery_home" || exit 1
+    sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
+  )
 }
 
 podman_as_bakery() {
@@ -68,8 +71,11 @@ podman_as_bakery() {
   runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
   bakery_home="$(getent passwd bakery | cut -d: -f6)"
   graphroot="$bakery_home/.local/share/containers/storage"
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" \
-    podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+  (
+    cd "$bakery_home" || exit 1
+    sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" \
+      podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+  )
 }
 
 podman_exec_for_container() {
