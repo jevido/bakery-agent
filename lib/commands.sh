@@ -20,8 +20,39 @@ ensure_bakery_xdg_runtime_dir() {
   printf '%s\n' "$runtime_dir"
 }
 
+ensure_bakery_rootless_podman_ready() {
+  local bakery_home runtime_dir cfg_dir storage_cfg containers_cfg graphroot
+  bakery_home="$(getent passwd bakery | cut -d: -f6)"
+  runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
+  cfg_dir="$bakery_home/.config/containers"
+  storage_cfg="$cfg_dir/storage.conf"
+  containers_cfg="$cfg_dir/containers.conf"
+  graphroot="$bakery_home/.local/share/containers/storage"
+
+  mkdir -p "$cfg_dir" "$graphroot" "$runtime_dir/containers"
+  cat > "$storage_cfg" <<CFG
+[storage]
+driver = "overlay"
+runroot = "$runtime_dir/containers"
+graphroot = "$graphroot"
+CFG
+  cat > "$containers_cfg" <<'CFG'
+[engine]
+runtime = "crun"
+
+[engine.runtimes]
+crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
+CFG
+  chown -R bakery:bakery "$cfg_dir" "$graphroot" "$runtime_dir" >/dev/null 2>&1 || true
+  chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
+  chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
+
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" command podman system migrate >/dev/null 2>&1 || true
+}
+
 podman_as_bakery() {
   local runtime_dir
+  ensure_bakery_rootless_podman_ready
   runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
   sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" command podman "$@"
 }
@@ -30,16 +61,16 @@ podman_exec_for_container() {
   local container_id="$1"
   shift
 
-  if podman_exec container exists "$container_id" >/dev/null 2>&1; then
-    podman_exec "$@"
-    return $?
-  fi
-
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
     if podman_as_bakery container exists "$container_id" >/dev/null 2>&1; then
       podman_as_bakery "$@"
       return $?
     fi
+  fi
+
+  if podman_exec container exists "$container_id" >/dev/null 2>&1; then
+    podman_exec "$@"
+    return $?
   fi
 
   return 1
@@ -51,6 +82,7 @@ bakery - lightweight VPS deployment agent
 
 Usage:
   bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+  bakery podman <podman-args...>
   bakery remove <domain>
   bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
   bakery setup
@@ -74,6 +106,24 @@ cmd_deploy() {
   [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
   shift || true
   run_deploy "$domain" "$@"
+}
+
+cmd_podman() {
+  [[ $# -gt 0 ]] || cli_usage "usage: bakery podman <podman-args...>"
+  require_cmd podman
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    id bakery >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User bakery does not exist"
+    podman_as_bakery "$@"
+    return $?
+  fi
+
+  if [[ "$(id -un)" == "bakery" ]]; then
+    podman_exec "$@"
+    return $?
+  fi
+
+  cli_die "$CLI_EXIT_PREREQ" "Run as root or bakery user"
 }
 
 cmd_remove() {
