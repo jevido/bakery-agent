@@ -177,6 +177,61 @@ CFG
   chmod 600 "$containers_cfg" >/dev/null 2>&1 || true
 }
 
+podman_exec_as_user() {
+  local target_user="$1"
+  shift
+
+  id "$target_user" >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User $target_user does not exist"
+  local uid home runtime_dir graphroot cfg_dir storage_cfg containers_cfg
+  uid="$(id -u "$target_user")"
+  home="$(getent passwd "$target_user" | cut -d: -f6)"
+  runtime_dir="/run/user/$uid"
+  graphroot="$home/.local/share/containers/storage"
+  cfg_dir="$home/.config/containers"
+  storage_cfg="$cfg_dir/storage.conf"
+  containers_cfg="$cfg_dir/containers.conf"
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    if command -v loginctl >/dev/null 2>&1; then
+      loginctl enable-linger "$target_user" >/dev/null 2>&1 || true
+      loginctl start-user "$target_user" >/dev/null 2>&1 || true
+    fi
+    mkdir -p "$runtime_dir" "$runtime_dir/containers" "$cfg_dir" "$graphroot"
+    chown -R "$target_user:$target_user" "$runtime_dir" "$cfg_dir" "$graphroot" >/dev/null 2>&1 || true
+    chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
+  fi
+
+  [[ -d "$runtime_dir" && -w "$runtime_dir" ]] || cli_die "$CLI_EXIT_PREREQ" "Rootless runtime dir unavailable at $runtime_dir for user $target_user"
+
+  cat > "$storage_cfg" <<CFG
+[storage]
+driver = "overlay"
+runroot = "$runtime_dir/containers"
+graphroot = "$graphroot"
+CFG
+  cat > "$containers_cfg" <<'CFG'
+[engine]
+runtime = "crun"
+cgroup_manager = "cgroupfs"
+
+[engine.runtimes]
+crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
+CFG
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown "$target_user:$target_user" "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
+  fi
+  chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    sudo -u "$target_user" -H env XDG_RUNTIME_DIR="$runtime_dir" \
+      podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+    return $?
+  fi
+
+  env XDG_RUNTIME_DIR="$runtime_dir" \
+    podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+}
+
 podman_rootless_preflight() {
   [[ "$(id -u)" -ne 0 ]] || return 0
   [[ -n "${_BAKERY_ROOTLESS_READY:-}" ]] && return 0
@@ -212,6 +267,10 @@ podman_rootless_preflight() {
 podman_exec() {
   podman_rootless_preflight
   if [[ "$(id -u)" -eq 0 ]]; then
+    if id bakery >/dev/null 2>&1; then
+      podman_exec_as_user bakery "$@"
+      return $?
+    fi
     command podman "$@"
     return $?
   fi

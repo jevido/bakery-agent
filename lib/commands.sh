@@ -10,77 +10,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/state.sh"
 # shellcheck source=lib/deploy.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/deploy.sh"
 
-ensure_bakery_xdg_runtime_dir() {
-  local bakery_uid runtime_dir run_user_dir
-  bakery_uid="$(id -u bakery)"
-  run_user_dir="/run/user/$bakery_uid"
-
-  if [[ -d "$run_user_dir" ]]; then
-    runtime_dir="$run_user_dir"
-  elif [[ "$(id -u)" -eq 0 ]]; then
-    if command -v loginctl >/dev/null 2>&1; then
-      loginctl enable-linger bakery >/dev/null 2>&1 || true
-      loginctl start-user bakery >/dev/null 2>&1 || true
-    fi
-    mkdir -p "$run_user_dir"
-    chown bakery:bakery "$run_user_dir" >/dev/null 2>&1 || true
-    chmod 700 "$run_user_dir" >/dev/null 2>&1 || true
-    runtime_dir="$run_user_dir"
-  else
-    runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
-  fi
-
-  mkdir -p "$runtime_dir"
-  chown bakery:bakery "$runtime_dir" >/dev/null 2>&1 || true
-  chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
-  printf '%s\n' "$runtime_dir"
-}
-
-ensure_bakery_rootless_podman_ready() {
-  local bakery_home runtime_dir cfg_dir storage_cfg containers_cfg graphroot
-  bakery_home="$(getent passwd bakery | cut -d: -f6)"
-  runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
-  cfg_dir="$bakery_home/.config/containers"
-  storage_cfg="$cfg_dir/storage.conf"
-  containers_cfg="$cfg_dir/containers.conf"
-  graphroot="$bakery_home/.local/share/containers/storage"
-
-  mkdir -p "$cfg_dir" "$graphroot" "$runtime_dir/containers"
-  cat > "$storage_cfg" <<CFG
-[storage]
-driver = "overlay"
-runroot = "$runtime_dir/containers"
-graphroot = "$graphroot"
-CFG
-  cat > "$containers_cfg" <<'CFG'
-[engine]
-runtime = "crun"
-cgroup_manager = "cgroupfs"
-
-[engine.runtimes]
-crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
-CFG
-  chown -R bakery:bakery "$cfg_dir" "$graphroot" "$runtime_dir" >/dev/null 2>&1 || true
-  chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
-  chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
-
-  (
-    cd "$bakery_home" || exit 1
-    sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
-  )
-}
-
 podman_as_bakery() {
-  local runtime_dir bakery_home graphroot
-  ensure_bakery_rootless_podman_ready
-  runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
-  bakery_home="$(getent passwd bakery | cut -d: -f6)"
-  graphroot="$bakery_home/.local/share/containers/storage"
-  (
-    cd "$bakery_home" || exit 1
-    sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" \
-      podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
-  )
+  podman_exec_as_user bakery "$@"
 }
 
 podman_exec_for_container() {
@@ -199,9 +130,21 @@ cmd_remove() {
     fi
   done < <($podman_cmd ps -a --filter "label=bakery.domain=$domain" --format '{{.ID}}')
 
+  if [[ "$(id -u)" -eq 0 ]]; then
+    while IFS= read -r cid; do
+      [[ -n "$cid" ]] || continue
+      if [[ ! " ${containers[*]} " =~ " ${cid} " ]]; then
+        containers+=("$cid")
+      fi
+    done < <(command podman ps -a --filter "label=bakery.domain=$domain" --format '{{.ID}}' 2>/dev/null || true)
+  fi
+
   local cid
   for cid in "${containers[@]:-}"; do
     $podman_cmd rm -f "$cid" >/dev/null 2>&1 || true
+    if [[ "$(id -u)" -eq 0 ]]; then
+      command podman rm -f "$cid" >/dev/null 2>&1 || true
+    fi
   done
 
   if [[ "$NGINX_ENABLED" == "1" ]]; then
@@ -218,9 +161,21 @@ cmd_remove() {
     images+=("$img")
   done < <($podman_cmd image ls --filter "label=bakery.managed=true" --filter "label=bakery.domain=$domain" --format '{{.ID}}')
 
+  if [[ "$(id -u)" -eq 0 ]]; then
+    while IFS= read -r img; do
+      [[ -n "$img" ]] || continue
+      if [[ ! " ${images[*]} " =~ " ${img} " ]]; then
+        images+=("$img")
+      fi
+    done < <(command podman image ls --filter "label=bakery.managed=true" --filter "label=bakery.domain=$domain" --format '{{.ID}}' 2>/dev/null || true)
+  fi
+
   local img
   for img in "${images[@]:-}"; do
     $podman_cmd rmi "$img" >/dev/null 2>&1 || true
+    if [[ "$(id -u)" -eq 0 ]]; then
+      command podman rmi "$img" >/dev/null 2>&1 || true
+    fi
   done
 
   rm -rf "$app_dir"
