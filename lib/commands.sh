@@ -10,6 +10,25 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/state.sh"
 # shellcheck source=lib/deploy.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/deploy.sh"
 
+podman_exec_for_container() {
+  local container_id="$1"
+  shift
+
+  if podman container exists "$container_id" >/dev/null 2>&1; then
+    podman "$@"
+    return $?
+  fi
+
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    if sudo -u bakery -H podman container exists "$container_id" >/dev/null 2>&1; then
+      sudo -u bakery -H podman "$@"
+      return $?
+    fi
+  fi
+
+  return 1
+}
+
 print_usage() {
   cat <<'USAGE'
 bakery - lightweight VPS deployment agent
@@ -331,7 +350,9 @@ cmd_status() {
   container_id="$(jq -r '.container_id' "$file")"
   if [[ -n "$container_id" && "$container_id" != "null" ]]; then
     log "INFO" "Container runtime status:"
-    podman ps -a --filter "id=$container_id"
+    if ! podman_exec_for_container "$container_id" ps -a --filter "id=$container_id"; then
+      cli_die "$CLI_EXIT_STATE" "No container found for $domain (container_id=$container_id)"
+    fi
   fi
 }
 
@@ -343,7 +364,9 @@ cmd_logs() {
   local container_id
   container_id="$(state_get "$domain" container_id | tr -d '"')"
   [[ -n "$container_id" ]] || cli_die "$CLI_EXIT_STATE" "No container found for $domain"
-  podman logs -f "$container_id"
+  if ! podman_exec_for_container "$container_id" logs -f "$container_id"; then
+    cli_die "$CLI_EXIT_STATE" "No container found for $domain (container_id=$container_id)"
+  fi
 }
 
 cmd_stop() {
@@ -361,7 +384,9 @@ cmd_stop() {
   expose="$(state_get "$domain" expose)"
   prev="$(state_get_or_empty "$domain" previous_container_id | tr -d '"')"
 
-  podman stop "$container_id"
+  if ! podman_exec_for_container "$container_id" stop "$container_id"; then
+    cli_die "$CLI_EXIT_STATE" "No container found for $domain (container_id=$container_id)"
+  fi
   state_write "$domain" "$repo" "$container_id" "$image" "$port" "stopped" "$expose" "$prev" "$branch"
 }
 
@@ -380,7 +405,9 @@ cmd_restart() {
   expose="$(state_get "$domain" expose)"
   prev="$(state_get_or_empty "$domain" previous_container_id | tr -d '"')"
 
-  podman restart "$container_id"
+  if ! podman_exec_for_container "$container_id" restart "$container_id"; then
+    cli_die "$CLI_EXIT_STATE" "No container found for $domain (container_id=$container_id)"
+  fi
   state_write "$domain" "$repo" "$container_id" "$image" "$port" "running" "$expose" "$prev" "$branch"
 }
 
