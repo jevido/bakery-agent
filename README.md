@@ -72,6 +72,10 @@ sudo bakery bootstrap app.example.com --repo https://github.com/org/repo.git --b
 
 Note: the `bakery` user must have a valid login shell (for example `/bin/bash`) so GitHub SSH actions can execute `bakery ...` commands.
 
+`bakery setup` also prepares rootless Podman for the `bakery` user by configuring:
+- `/etc/subuid` and `/etc/subgid` ranges
+- `/etc/containers/registries.conf.d/010-bakery.conf` with default unqualified registries
+
 If you change domain names:
 1. Deploy the new domain.
 2. Remove old domain resources:

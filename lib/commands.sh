@@ -245,6 +245,24 @@ cmd_setup() {
   apt-get update
   apt-get install -y podman nginx certbot python3-certbot-nginx openssl jq git curl logrotate
 
+  if id bakery >/dev/null 2>&1; then
+    local subuid_start subgid_start
+    subuid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subuid 2>/dev/null || echo 100000)"
+    subgid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subgid 2>/dev/null || echo 100000)"
+
+    if ! grep -q '^bakery:' /etc/subuid 2>/dev/null; then
+      printf 'bakery:%s:65536\n' "$subuid_start" >> /etc/subuid
+    fi
+    if ! grep -q '^bakery:' /etc/subgid 2>/dev/null; then
+      printf 'bakery:%s:65536\n' "$subgid_start" >> /etc/subgid
+    fi
+  fi
+
+  mkdir -p /etc/containers/registries.conf.d
+  cat > /etc/containers/registries.conf.d/010-bakery.conf <<'CFG'
+unqualified-search-registries = ["docker.io", "ghcr.io", "quay.io"]
+CFG
+
   log "INFO" "Installed bakery runtime dependencies"
 }
 
