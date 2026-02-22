@@ -47,14 +47,14 @@ CFG
   chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
   chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
 
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" command podman system migrate >/dev/null 2>&1 || true
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
 }
 
 podman_as_bakery() {
   local runtime_dir
   ensure_bakery_rootless_podman_ready
   runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" command podman "$@"
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman "$@"
 }
 
 podman_exec_for_container() {
