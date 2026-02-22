@@ -94,3 +94,13 @@ ensure_base_dirs() {
 json_escape() {
   printf '%s' "$1" | jq -Rr @json
 }
+
+# Rootless podman often requires a writable XDG_RUNTIME_DIR in non-interactive SSH sessions.
+if [[ "$(id -u)" -ne 0 ]]; then
+  if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -d "${XDG_RUNTIME_DIR:-}" || ! -w "${XDG_RUNTIME_DIR:-}" ]]; then
+    XDG_RUNTIME_DIR="$BAKERY_TMP_ROOT/bakery-xdg-$(id -u)"
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 700 "$XDG_RUNTIME_DIR" || true
+    export XDG_RUNTIME_DIR
+  fi
+fi

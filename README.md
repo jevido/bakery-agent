@@ -75,7 +75,7 @@ Note: the `bakery` user must have a valid login shell (for example `/bin/bash`) 
 `bakery setup` also prepares rootless Podman for the `bakery` user by configuring:
 - `/etc/subuid` and `/etc/subgid` ranges
 - `/etc/containers/registries.conf.d/010-bakery.conf` with default unqualified registries
-- required rootless helpers (`uidmap`, `slirp4netns`, `fuse-overlayfs`, `passt`/`pasta`)
+- required rootless helpers (`crun`, `uidmap`, `slirp4netns`, `fuse-overlayfs`, `passt`/`pasta`)
 - `sudo` so `bakery` can perform Nginx/Certbot actions during deploy
 
 If you change domain names:
