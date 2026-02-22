@@ -223,8 +223,11 @@ CFG
   chmod 600 "$storage_cfg" "$containers_cfg" >/dev/null 2>&1 || true
 
   if [[ "$(id -u)" -eq 0 ]]; then
-    sudo -u "$target_user" -H env XDG_RUNTIME_DIR="$runtime_dir" \
-      podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+    (
+      cd "$home" || exit 1
+      sudo -u "$target_user" -H env XDG_RUNTIME_DIR="$runtime_dir" \
+        podman --runtime /usr/bin/crun --cgroup-manager cgroupfs --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
+    )
     return $?
   fi
 
