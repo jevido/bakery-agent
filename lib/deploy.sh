@@ -163,13 +163,15 @@ cleanup_old_domain_containers() {
 
   mapfile -t container_ids < <(
     podman_exec ps -a \
+      --no-trunc \
       --filter "label=bakery.domain=$domain" \
       --format '{{.ID}}'
   )
 
   for cid in "${container_ids[@]:-}"; do
     [[ -n "$cid" ]] || continue
-    if [[ "$cid" != "$keep_container_id" ]]; then
+    # Keep the active container; podman output may vary between short/full IDs.
+    if [[ "$cid" != "$keep_container_id" && "$keep_container_id" != "$cid"* && "$cid" != "$keep_container_id"* ]]; then
       podman_exec rm -f "$cid" >/dev/null 2>&1 || true
     fi
   done

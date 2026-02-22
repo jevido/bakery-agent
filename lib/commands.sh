@@ -510,7 +510,7 @@ refresh_state_domain() {
     return 0
   fi
 
-  discovered_container="$(podman_for_domain_context ps -a --filter "label=bakery.domain=$domain" --filter "status=running" --sort created --format '{{.ID}}' | tail -n1)"
+  discovered_container="$(podman_for_domain_context ps -a --no-trunc --filter "label=bakery.domain=$domain" --filter "status=running" --sort created --format '{{.ID}}' | tail -n1)"
   if [[ -n "$discovered_container" ]]; then
     discovered_status="$(podman_for_domain_context container inspect --format '{{.State.Status}}' "$discovered_container" 2>/dev/null || true)"
     discovered_image="$(podman_for_domain_context container inspect --format '{{.Image}}' "$discovered_container" 2>/dev/null || true)"
