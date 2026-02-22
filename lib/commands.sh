@@ -11,9 +11,21 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/state.sh"
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/deploy.sh"
 
 ensure_bakery_xdg_runtime_dir() {
-  local bakery_uid runtime_dir
+  local bakery_uid runtime_dir run_user_dir
   bakery_uid="$(id -u bakery)"
-  runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
+  run_user_dir="/run/user/$bakery_uid"
+
+  if [[ -d "$run_user_dir" ]]; then
+    runtime_dir="$run_user_dir"
+  elif [[ "$(id -u)" -eq 0 ]]; then
+    mkdir -p "$run_user_dir"
+    chown bakery:bakery "$run_user_dir" >/dev/null 2>&1 || true
+    chmod 700 "$run_user_dir" >/dev/null 2>&1 || true
+    runtime_dir="$run_user_dir"
+  else
+    runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
+  fi
+
   mkdir -p "$runtime_dir"
   chown bakery:bakery "$runtime_dir" >/dev/null 2>&1 || true
   chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
