@@ -18,6 +18,10 @@ ensure_bakery_xdg_runtime_dir() {
   if [[ -d "$run_user_dir" ]]; then
     runtime_dir="$run_user_dir"
   elif [[ "$(id -u)" -eq 0 ]]; then
+    if command -v loginctl >/dev/null 2>&1; then
+      loginctl enable-linger bakery >/dev/null 2>&1 || true
+      loginctl start-user bakery >/dev/null 2>&1 || true
+    fi
     mkdir -p "$run_user_dir"
     chown bakery:bakery "$run_user_dir" >/dev/null 2>&1 || true
     chmod 700 "$run_user_dir" >/dev/null 2>&1 || true
@@ -403,6 +407,11 @@ CFG
     chmod 600 "$containers_cfg"
 
     sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman system migrate >/dev/null 2>&1 || true
+
+    if command -v loginctl >/dev/null 2>&1; then
+      loginctl enable-linger bakery >/dev/null 2>&1 || true
+      loginctl start-user bakery >/dev/null 2>&1 || true
+    fi
   fi
 
   mkdir -p /etc/containers/registries.conf.d
