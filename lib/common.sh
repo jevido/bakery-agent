@@ -95,88 +95,114 @@ json_escape() {
   printf '%s' "$1" | jq -Rr @json
 }
 
-ensure_rootless_podman_env() {
-  [[ "$(id -u)" -ne 0 ]] || return 0
-  [[ -n "${_BAKERY_ROOTLESS_READY:-}" ]] && return 0
-
-  local uid user home runtime_dir cfg_dir storage_cfg containers_cfg graphroot
-  uid="$(id -u)"
+resolve_current_user_home() {
+  local user home
   user="$(id -un 2>/dev/null || true)"
   home="${HOME:-}"
-  if [[ -z "$home" && -n "$user" ]]; then
-    home="$(getent passwd "$user" | cut -d: -f6 || true)"
+
+  if [[ -n "$home" ]]; then
+    printf '%s\n' "$home"
+    return 0
   fi
 
-  runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$uid"
-  mkdir -p "$runtime_dir" "$runtime_dir/containers"
-  chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
+  if [[ -n "$user" ]]; then
+    home="$(getent passwd "$user" | cut -d: -f6 || true)"
+    if [[ -n "$home" ]]; then
+      printf '%s\n' "$home"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+ensure_rootless_runtime_dir() {
+  [[ "$(id -u)" -ne 0 ]] || return 0
+
+  local uid runtime_dir preferred_runtime_dir
+  uid="$(id -u)"
+  preferred_runtime_dir="/run/user/$uid"
+
+  if [[ -d "$preferred_runtime_dir" && -w "$preferred_runtime_dir" ]]; then
+    runtime_dir="$preferred_runtime_dir"
+  else
+    runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$uid"
+    mkdir -p "$runtime_dir"
+    chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
+  fi
+
   export XDG_RUNTIME_DIR="$runtime_dir"
+}
 
-  # The managed deployment user is bakery; keep its Podman config deterministic.
-  if [[ "$user" == "bakery" && -n "$home" ]]; then
-    cfg_dir="$home/.config/containers"
-    graphroot="$home/.local/share/containers/storage"
-    storage_cfg="$cfg_dir/storage.conf"
-    containers_cfg="$cfg_dir/containers.conf"
+ensure_rootless_podman_config() {
+  [[ "$(id -u)" -ne 0 ]] || return 0
 
-    mkdir -p "$cfg_dir" "$graphroot"
-    cat > "$storage_cfg" <<CFG
+  local runtime_dir home cfg_dir storage_cfg containers_cfg graphroot
+  runtime_dir="${XDG_RUNTIME_DIR:-}"
+  [[ -n "$runtime_dir" ]] || return 0
+  home="$(resolve_current_user_home || true)"
+  [[ -n "$home" ]] || return 0
+
+  cfg_dir="$home/.config/containers"
+  graphroot="$home/.local/share/containers/storage"
+  storage_cfg="$cfg_dir/storage.conf"
+  containers_cfg="$cfg_dir/containers.conf"
+
+  mkdir -p "$runtime_dir/containers" "$cfg_dir" "$graphroot"
+  chmod 700 "$runtime_dir" >/dev/null 2>&1 || true
+  chmod 700 "$runtime_dir/containers" >/dev/null 2>&1 || true
+
+  cat > "$storage_cfg" <<CFG
 [storage]
 driver = "overlay"
 runroot = "$runtime_dir/containers"
 graphroot = "$graphroot"
 CFG
-    chmod 600 "$storage_cfg" >/dev/null 2>&1 || true
+  chmod 600 "$storage_cfg" >/dev/null 2>&1 || true
 
-    cat > "$containers_cfg" <<'CFG'
+  cat > "$containers_cfg" <<'CFG'
 [engine]
 runtime = "crun"
 
 [engine.runtimes]
 crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/crun"]
 CFG
-    chmod 600 "$containers_cfg" >/dev/null 2>&1 || true
-
-  fi
-
-  _BAKERY_ROOTLESS_READY=1
+  chmod 600 "$containers_cfg" >/dev/null 2>&1 || true
 }
 
-ensure_rootless_podman_env
+podman_rootless_preflight() {
+  [[ "$(id -u)" -ne 0 ]] || return 0
+  [[ -n "${_BAKERY_ROOTLESS_READY:-}" ]] && return 0
 
-podman() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    command podman "$@"
-    return $?
-  fi
+  require_cmd podman
+  ensure_rootless_runtime_dir
+  ensure_rootless_podman_config
 
-  local out_file err_file rc
-  out_file="$(mktemp "$BAKERY_TMP_ROOT/bakery-podman-out.XXXXXX")"
-  err_file="$(mktemp "$BAKERY_TMP_ROOT/bakery-podman-err.XXXXXX")"
+  local err_file
+  err_file="$(mktemp "$BAKERY_TMP_ROOT/bakery-podman-info.XXXXXX")"
 
-  if command podman "$@" >"$out_file" 2>"$err_file"; then
-    cat "$out_file"
-    rm -f "$out_file" "$err_file"
+  if command podman info >/dev/null 2>"$err_file"; then
+    rm -f "$err_file"
+    _BAKERY_ROOTLESS_READY=1
     return 0
   fi
-  rc=$?
 
-  if grep -q 'cannot re-exec process to join the existing user namespace' "$err_file"; then
-    ensure_rootless_podman_env
+  if grep -Eq 'cannot re-exec process to join the existing user namespace|RunRoot is pointing to a path .* not writable|default OCI runtime "crun" not found|no subuid ranges found|exec: "newuidmap": executable file not found|setup network: could not find pasta' "$err_file"; then
     command podman system migrate >/dev/null 2>&1 || true
-
-    : > "$out_file"
-    : > "$err_file"
-    if command podman "$@" >"$out_file" 2>"$err_file"; then
-      cat "$out_file"
-      rm -f "$out_file" "$err_file"
+    if command podman info >/dev/null 2>"$err_file"; then
+      rm -f "$err_file"
+      _BAKERY_ROOTLESS_READY=1
       return 0
     fi
-    rc=$?
   fi
 
-  cat "$out_file"
-  cat "$err_file" >&2
-  rm -f "$out_file" "$err_file"
-  return "$rc"
+  local err_msg
+  err_msg="$(sed -n '1,5p' "$err_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  rm -f "$err_file"
+  cli_die "$CLI_EXIT_PREREQ" "Rootless Podman is not healthy for user $(id -un). Run 'sudo bakery setup' and retry. Details: ${err_msg:-podman info failed}"
+}
+
+podman_exec() {
+  podman_rootless_preflight
+  command podman "$@"
 }

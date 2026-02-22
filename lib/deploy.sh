@@ -84,8 +84,8 @@ rollback_deploy() {
   log "WARN" "Rolling back failed deploy for $domain"
 
   if [[ -n "$previous_container_id" ]]; then
-    if ! podman ps --noheading --filter "id=$previous_container_id" | grep -q .; then
-      podman start "$previous_container_id" >/dev/null 2>&1 || true
+    if ! podman_exec ps --noheading --filter "id=$previous_container_id" | grep -q .; then
+      podman_exec start "$previous_container_id" >/dev/null 2>&1 || true
     fi
 
     restore_previous_routing "$domain" "$previous_expose" "$previous_port"
@@ -139,7 +139,7 @@ cleanup_old_images() {
   fi
 
   mapfile -t image_ids < <(
-    podman image ls \
+    podman_exec image ls \
       --filter "label=bakery.managed=true" \
       --filter "label=bakery.domain=$domain" \
       --sort created \
@@ -151,7 +151,7 @@ cleanup_old_images() {
   fi
 
   for ((idx=0; idx<${#image_ids[@]}-keep_count; idx++)); do
-    podman rmi "${image_ids[$idx]}" >/dev/null 2>&1 || true
+    podman_exec rmi "${image_ids[$idx]}" >/dev/null 2>&1 || true
   done
 }
 
@@ -284,7 +284,7 @@ run_stage() {
 detect_expose() {
   local image="$1"
   local exposed
-  exposed="$(podman image inspect --format '{{json .Config.ExposedPorts}}' "$image" 2>/dev/null || true)"
+  exposed="$(podman_exec image inspect --format '{{json .Config.ExposedPorts}}' "$image" 2>/dev/null || true)"
   if [[ -z "$exposed" || "$exposed" == "null" || "$exposed" == "{}" ]]; then
     printf 'false\n'
   else
@@ -294,7 +294,7 @@ detect_expose() {
 
 get_first_container_port() {
   local image="$1"
-  podman image inspect --format '{{range $k, $v := .Config.ExposedPorts}}{{$k}}{{break}}{{end}}' "$image" | awk -F'/' '{print $1}'
+  podman_exec image inspect --format '{{range $k, $v := .Config.ExposedPorts}}{{$k}}{{break}}{{end}}' "$image" | awk -F'/' '{print $1}'
 }
 
 generate_nginx_conf() {
@@ -383,7 +383,7 @@ health_check() {
   fi
 
   sleep 10
-  if podman ps --noheading --filter "id=$container_id" | grep -q .; then
+  if podman_exec ps --noheading --filter "id=$container_id" | grep -q .; then
     return 0
   fi
 
@@ -395,7 +395,7 @@ ensure_container_persisted() {
   local domain="$1"
   local container_id="$2"
 
-  if ! podman container exists "$container_id" >/dev/null 2>&1; then
+  if ! podman_exec container exists "$container_id" >/dev/null 2>&1; then
     die "Container missing before finalize for $domain (container_id=$container_id)"
   fi
 }
@@ -411,6 +411,7 @@ run_deploy() {
   require_cmd podman
   require_cmd openssl
   require_cmd flock
+  podman_rootless_preflight
 
   local repo_override="" branch_override="" cpu_override="" memory_override=""
   while (($#)); do
@@ -494,12 +495,12 @@ run_deploy() {
   fi
 
   run_stage "2" "Building image $image_name"
-  podman build \
+  podman_exec build \
     --label "bakery.managed=true" \
     --label "bakery.domain=$domain" \
     -t "$image_name" \
     "$clone_dir"
-  image_id="$(podman image inspect --format '{{.Id}}' "$image_name")"
+  image_id="$(podman_exec image inspect --format '{{.Id}}' "$image_name")"
 
   run_stage "3" "Cleaning cloned source"
   rm -rf "$clone_dir"
@@ -532,11 +533,11 @@ run_deploy() {
     container_port="$(get_first_container_port "$image_name")"
     [[ -n "$container_port" ]] || die "EXPOSE detected but no container port parsed"
     port="$(next_free_port "$PORT_RANGE_START" "$PORT_RANGE_END")" || die "No free port available in configured range"
-    container_id="$(podman run "${common_run_args[@]}" \
+    container_id="$(podman_exec run "${common_run_args[@]}" \
       -p "127.0.0.1:${port}:${container_port}" \
       "$image_name")"
   else
-    container_id="$(podman run "${common_run_args[@]}" "$image_name")"
+    container_id="$(podman_exec run "${common_run_args[@]}" "$image_name")"
   fi
 
   mkdir -p "$app_dir"
@@ -565,8 +566,8 @@ run_deploy() {
   state_write "$domain" "$state_repo" "$container_id" "$image_id" "$port" "running" "$expose" "$previous_container_id" "$state_branch"
 
   if [[ -n "$previous_container_id" ]]; then
-    podman stop "$previous_container_id" >/dev/null 2>&1 || true
-    podman rm "$previous_container_id" >/dev/null 2>&1 || true
+    podman_exec stop "$previous_container_id" >/dev/null 2>&1 || true
+    podman_exec rm "$previous_container_id" >/dev/null 2>&1 || true
   fi
 
   run_stage "7" "Applying image cleanup policy (keep latest ${IMAGE_RETENTION_COUNT})"

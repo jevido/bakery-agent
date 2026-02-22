@@ -23,15 +23,15 @@ ensure_bakery_xdg_runtime_dir() {
 podman_as_bakery() {
   local runtime_dir
   runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman "$@"
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" command podman "$@"
 }
 
 podman_exec_for_container() {
   local container_id="$1"
   shift
 
-  if podman container exists "$container_id" >/dev/null 2>&1; then
-    podman "$@"
+  if podman_exec container exists "$container_id" >/dev/null 2>&1; then
+    podman_exec "$@"
     return $?
   fi
 
@@ -103,7 +103,7 @@ cmd_remove() {
     containers+=("$prev_container_id")
   fi
 
-  local podman_cmd="podman"
+  local podman_cmd="podman_exec"
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
     podman_cmd="podman_as_bakery"
   fi

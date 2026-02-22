@@ -79,7 +79,7 @@ Note: the `bakery` user must have a valid login shell (for example `/bin/bash`) 
 - required rootless helpers (`crun`, `uidmap`, `slirp4netns`, `fuse-overlayfs`, `passt`/`pasta`)
 - `sudo` so `bakery` can perform Nginx/Certbot actions during deploy
 
-At runtime, `bakery` also auto-heals its own rootless Podman user config (`XDG_RUNTIME_DIR`, `~/.config/containers/storage.conf`, `~/.config/containers/containers.conf`) and retries namespace re-entry failures automatically, so deploys work in non-interactive SSH sessions without manual host edits.
+At runtime, `bakery` auto-heals its rootless Podman user config (`XDG_RUNTIME_DIR`, `~/.config/containers/storage.conf`, `~/.config/containers/containers.conf`) and runs a rootless preflight gate before Podman operations. If the host runtime is unhealthy, deploy fails early with a clear setup error instead of continuing in a broken state.
 
 If you change domain names:
 1. Deploy the new domain.
