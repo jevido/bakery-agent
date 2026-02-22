@@ -51,10 +51,13 @@ CFG
 }
 
 podman_as_bakery() {
-  local runtime_dir
+  local runtime_dir bakery_home graphroot
   ensure_bakery_rootless_podman_ready
   runtime_dir="$(ensure_bakery_xdg_runtime_dir)"
-  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" podman "$@"
+  bakery_home="$(getent passwd bakery | cut -d: -f6)"
+  graphroot="$bakery_home/.local/share/containers/storage"
+  sudo -u bakery -H env XDG_RUNTIME_DIR="$runtime_dir" \
+    podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
 }
 
 podman_exec_for_container() {

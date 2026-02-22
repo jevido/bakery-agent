@@ -204,5 +204,15 @@ podman_rootless_preflight() {
 
 podman_exec() {
   podman_rootless_preflight
-  command podman "$@"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    command podman "$@"
+    return $?
+  fi
+
+  local runtime_dir home graphroot
+  runtime_dir="${XDG_RUNTIME_DIR:-}"
+  home="$(resolve_current_user_home || true)"
+  graphroot="$home/.local/share/containers/storage"
+
+  command podman --runtime /usr/bin/crun --runroot "$runtime_dir/containers" --root "$graphroot" "$@"
 }
