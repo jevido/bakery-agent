@@ -493,6 +493,11 @@ run_deploy() {
   container_name="bakery-$(echo "$domain" | tr '.' '-')-$(date +%s)"
   container_id=""
 
+  # Podman is executed as the rootless bakery user; ensure staged files are readable there.
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    chown -R bakery:bakery "$clone_dir" "$env_tmp" >/dev/null 2>&1 || true
+  fi
+
   previous_container_id="$(state_get_or_empty "$domain" container_id | tr -d '"')"
   previous_repo="$(state_get_or_empty "$domain" repo | tr -d '"')"
   previous_branch="$(state_get_or_empty "$domain" branch | tr -d '"')"
@@ -512,6 +517,9 @@ run_deploy() {
 
   run_stage "1" "Cloning $repo (branch=$branch)"
   clone_repo "$domain" "$repo" "$branch" "$clone_dir"
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    chown -R bakery:bakery "$clone_dir" >/dev/null 2>&1 || true
+  fi
   if [[ ! -f "$clone_dir/Dockerfile" && ! -f "$clone_dir/Containerfile" ]]; then
     die "No Dockerfile or Containerfile found in repository"
   fi
@@ -533,6 +541,10 @@ run_deploy() {
   container_port=""
 
   decrypt_env_to_file "$domain" "$env_tmp"
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    chown bakery:bakery "$env_tmp" >/dev/null 2>&1 || true
+    chmod 600 "$env_tmp" >/dev/null 2>&1 || true
+  fi
   common_run_args=(
     -d
     --restart unless-stopped
