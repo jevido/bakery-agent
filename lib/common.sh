@@ -137,12 +137,46 @@ crun = ["/usr/bin/crun", "/usr/sbin/crun", "/usr/local/bin/crun", "/usr/libexec/
 CFG
     chmod 600 "$containers_cfg" >/dev/null 2>&1 || true
 
-    if command -v podman >/dev/null 2>&1; then
-      podman system migrate >/dev/null 2>&1 || true
-    fi
   fi
 
   _BAKERY_ROOTLESS_READY=1
 }
 
 ensure_rootless_podman_env
+
+podman() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    command podman "$@"
+    return $?
+  fi
+
+  local out_file err_file rc
+  out_file="$(mktemp "$BAKERY_TMP_ROOT/bakery-podman-out.XXXXXX")"
+  err_file="$(mktemp "$BAKERY_TMP_ROOT/bakery-podman-err.XXXXXX")"
+
+  if command podman "$@" >"$out_file" 2>"$err_file"; then
+    cat "$out_file"
+    rm -f "$out_file" "$err_file"
+    return 0
+  fi
+  rc=$?
+
+  if grep -q 'cannot re-exec process to join the existing user namespace' "$err_file"; then
+    ensure_rootless_podman_env
+    command podman system migrate >/dev/null 2>&1 || true
+
+    : > "$out_file"
+    : > "$err_file"
+    if command podman "$@" >"$out_file" 2>"$err_file"; then
+      cat "$out_file"
+      rm -f "$out_file" "$err_file"
+      return 0
+    fi
+    rc=$?
+  fi
+
+  cat "$out_file"
+  cat "$err_file" >&2
+  rm -f "$out_file" "$err_file"
+  return "$rc"
+}
