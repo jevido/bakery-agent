@@ -495,7 +495,7 @@ run_deploy() {
 
   # Podman is executed as the rootless bakery user; ensure staged files are readable there.
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
-    chown -R bakery:bakery "$clone_dir" "$env_tmp" >/dev/null 2>&1 || true
+    chown -R bakery:bakery "$clone_dir" >/dev/null 2>&1 || true
   fi
 
   previous_container_id="$(state_get_or_empty "$domain" container_id | tr -d '"')"
