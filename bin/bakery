@@ -57,7 +57,12 @@ main() {
       ;;
     status)
       shift
-      cmd_status "$@"
+      if [[ "${1:-}" == "refresh" ]]; then
+        shift
+        cmd_status_refresh "$@"
+      else
+        cmd_status "$@"
+      fi
       ;;
     logs)
       shift

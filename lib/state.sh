@@ -107,6 +107,19 @@ state_write() {
   state_write_json "$domain" "$json"
 }
 
+state_update_status() {
+  local domain="$1"
+  local status="$2"
+  local file json
+
+  file="$(state_file "$domain")"
+  [[ -f "$file" ]] || return 1
+  state_validate_file "$file" "$domain" || return 1
+
+  json="$(jq --arg status "$status" '.status = $status' "$file")"
+  state_write_json "$domain" "$json"
+}
+
 state_list_files() {
   find "$BAKERY_APPS_DIR" -mindepth 2 -maxdepth 2 -name state.json 2>/dev/null | sort
 }

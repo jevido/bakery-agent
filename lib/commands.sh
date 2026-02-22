@@ -42,6 +42,7 @@ Usage:
   bakery pat get
   bakery list
   bakery status <domain>
+  bakery status refresh [domain]
   bakery logs <domain>
   bakery stop <domain>
   bakery restart <domain>
@@ -333,6 +334,50 @@ cmd_list() {
 
     jq -r '[.domain, .status, (.port|tostring), .deployed_at] | @tsv' "$file" | \
       awk -F'\t' '{printf "%-35s %-12s %-7s %-20s\n", $1, $2, $3, $4}'
+  done < <(state_list_files)
+}
+
+refresh_state_domain() {
+  local domain="$1"
+  local file container_id runtime_status
+
+  file="$(state_file "$domain")"
+  if ! state_validate_file "$file" "$domain"; then
+    log "WARN" "Skipping invalid state file: $file"
+    return 0
+  fi
+
+  container_id="$(jq -r '.container_id // empty' "$file")"
+  if [[ -z "$container_id" ]]; then
+    state_update_status "$domain" "missing"
+    log "INFO" "Refreshed $domain status=missing (no container_id in state)"
+    return 0
+  fi
+
+  if runtime_status="$(podman_exec_for_container "$container_id" container inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null)"; then
+    state_update_status "$domain" "$runtime_status"
+    log "INFO" "Refreshed $domain status=$runtime_status"
+    return 0
+  fi
+
+  state_update_status "$domain" "missing"
+  log "INFO" "Refreshed $domain status=missing (container not found)"
+}
+
+cmd_status_refresh() {
+  local domain="${1:-}"
+  ensure_base_dirs
+
+  if [[ -n "$domain" ]]; then
+    state_require_valid "$domain"
+    refresh_state_domain "$domain"
+    return 0
+  fi
+
+  local file iter_domain
+  while IFS= read -r file; do
+    iter_domain="$(basename "$(dirname "$file")")"
+    refresh_state_domain "$iter_domain"
   done < <(state_list_files)
 }
 

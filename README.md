@@ -26,6 +26,7 @@ bakery pat set
 bakery pat get
 bakery list
 bakery status <domain>
+bakery status refresh [domain]
 bakery logs <domain>
 bakery stop <domain>
 bakery restart <domain>
