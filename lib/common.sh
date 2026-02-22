@@ -119,11 +119,17 @@ resolve_current_user_home() {
 ensure_rootless_runtime_dir() {
   [[ "$(id -u)" -ne 0 ]] || return 0
 
-  local uid runtime_dir preferred_runtime_dir
+  local uid user runtime_dir preferred_runtime_dir
   uid="$(id -u)"
+  user="$(id -un 2>/dev/null || true)"
   preferred_runtime_dir="/run/user/$uid"
 
-  if [[ -d "$preferred_runtime_dir" && -w "$preferred_runtime_dir" ]]; then
+  if [[ "$user" == "bakery" ]]; then
+    if [[ ! -d "$preferred_runtime_dir" || ! -w "$preferred_runtime_dir" ]]; then
+      cli_die "$CLI_EXIT_PREREQ" "Rootless runtime dir unavailable at $preferred_runtime_dir for user bakery. Run 'sudo bakery setup' to enable lingering, then retry."
+    fi
+    runtime_dir="$preferred_runtime_dir"
+  elif [[ -d "$preferred_runtime_dir" && -w "$preferred_runtime_dir" ]]; then
     runtime_dir="$preferred_runtime_dir"
   else
     runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$uid"
