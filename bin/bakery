@@ -22,6 +22,10 @@ main() {
       shift
       cmd_deploy "$@"
       ;;
+    bootstrap)
+      shift
+      cmd_bootstrap "$@"
+      ;;
     setup)
       shift
       cmd_setup "$@"

@@ -16,6 +16,7 @@ bakery - lightweight VPS deployment agent
 
 Usage:
   bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+  bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
   bakery setup
   bakery pat set
   bakery pat get
@@ -36,6 +37,138 @@ cmd_deploy() {
   [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
   shift || true
   run_deploy "$domain" "$@"
+}
+
+detect_default_host() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$ip" ]]; then
+    printf '%s\n' "$ip"
+    return 0
+  fi
+  hostname -f 2>/dev/null || hostname
+}
+
+cmd_bootstrap() {
+  local domain="${1:-}"
+  [[ -n "$domain" ]] || cli_usage "usage: bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]"
+  shift || true
+
+  require_root
+  require_cmd ssh-keygen
+  load_config
+  ensure_base_dirs
+
+  local repo="" branch="" host="" ssh_user="bakery"
+  while (($#)); do
+    case "$1" in
+      --repo)
+        shift
+        [[ $# -gt 0 ]] || cli_usage "missing value for --repo"
+        repo="$1"
+        ;;
+      --branch)
+        shift
+        [[ $# -gt 0 ]] || cli_usage "missing value for --branch"
+        branch="$1"
+        ;;
+      --host)
+        shift
+        [[ $# -gt 0 ]] || cli_usage "missing value for --host"
+        host="$1"
+        ;;
+      --ssh-user)
+        shift
+        [[ $# -gt 0 ]] || cli_usage "missing value for --ssh-user"
+        ssh_user="$1"
+        ;;
+      *)
+        cli_usage "unknown bootstrap option: $1"
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "$repo" ]]; then
+    repo="$(state_get_or_empty "$domain" repo | tr -d '"')"
+  fi
+  if [[ -z "$branch" ]]; then
+    branch="$(state_get_or_empty "$domain" branch | tr -d '"')"
+  fi
+  branch="${branch:-${BAKERY_BRANCH:-main}}"
+  host="${host:-$(detect_default_host)}"
+
+  local dir key_file pub_file pub_key user_home auth_file
+  dir="$(domain_dir "$domain")"
+  mkdir -p "$dir"
+  key_file="$dir/deploy_ssh_key"
+  pub_file="$key_file.pub"
+
+  if [[ ! -f "$key_file" || ! -f "$pub_file" ]]; then
+    ssh-keygen -t ed25519 -N "" -f "$key_file" -C "bakery-${domain}-deploy" >/dev/null
+  fi
+  chmod 600 "$key_file"
+  chmod 644 "$pub_file"
+
+  if id "$ssh_user" >/dev/null 2>&1; then
+    user_home="$(getent passwd "$ssh_user" | cut -d: -f6)"
+    if [[ -n "$user_home" ]]; then
+      mkdir -p "$user_home/.ssh"
+      auth_file="$user_home/.ssh/authorized_keys"
+      touch "$auth_file"
+      chmod 700 "$user_home/.ssh"
+      chmod 600 "$auth_file"
+      chown -R "$ssh_user:$ssh_user" "$user_home/.ssh"
+      pub_key="$(cat "$pub_file")"
+      if ! grep -qxF "$pub_key" "$auth_file"; then
+        printf '%s\n' "$pub_key" >> "$auth_file"
+      fi
+    fi
+  else
+    log "WARN" "SSH user $ssh_user does not exist; public key was not installed into authorized_keys"
+  fi
+
+  local deploy_cmd
+  deploy_cmd="bakery deploy $domain"
+  if [[ -n "$repo" ]]; then
+    deploy_cmd+=" --repo $repo"
+  fi
+  if [[ -n "$branch" ]]; then
+    deploy_cmd+=" --branch $branch"
+  fi
+
+  cat <<EOF
+Bootstrap complete for $domain
+
+SSH details:
+- User: $ssh_user
+- Private key file: $key_file
+- Public key file: $pub_file
+- Host: $host
+
+Add this private key to GitHub secret VPS_SSH_KEY:
+$(cat "$key_file")
+
+GitHub Actions workflow template (.github/workflows/deploy.yml):
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [$branch]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via bakery-agent
+        uses: appleboy/ssh-action@v1
+        with:
+          host: "$host"
+          username: "$ssh_user"
+          key: \${{ secrets.VPS_SSH_KEY }}
+          script: |
+            $deploy_cmd
+EOF
 }
 
 cmd_setup() {
