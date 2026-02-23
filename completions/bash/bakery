@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+_bakery_domains() {
+  local apps_dir="${BAKERY_ROOT:-/etc/bakery}/apps"
+  [[ -d "$apps_dir" ]] || return 0
+
+  local domain
+  for domain in "$apps_dir"/*; do
+    [[ -d "$domain" ]] || continue
+    basename "$domain"
+  done
+}
+
+_bakery_complete_domains() {
+  local cur="$1"
+  local domains
+  domains="$(_bakery_domains)"
+  COMPREPLY=( $(compgen -W "$domains" -- "$cur") )
+}
+
+_bakery() {
+  local cur prev cmd sub
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  cmd="${COMP_WORDS[1]:-}"
+  sub="${COMP_WORDS[2]:-}"
+
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "deploy podman remove bootstrap setup pat list status logs stop restart env update daemon help -h --help" -- "$cur") )
+    return 0
+  fi
+
+  case "$cmd" in
+    deploy)
+      if [[ "$prev" =~ ^(--repo|--branch|--cpu|--memory)$ ]]; then
+        return 0
+      fi
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--repo --branch --cpu --memory" -- "$cur") )
+        return 0
+      fi
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        _bakery_complete_domains "$cur"
+      fi
+      ;;
+    bootstrap)
+      if [[ "$prev" =~ ^(--repo|--branch|--host|--ssh-user)$ ]]; then
+        return 0
+      fi
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--repo --branch --host --ssh-user" -- "$cur") )
+        return 0
+      fi
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        _bakery_complete_domains "$cur"
+      fi
+      ;;
+    remove|logs|stop|restart)
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        _bakery_complete_domains "$cur"
+      fi
+      ;;
+    status)
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W "refresh $(_bakery_domains)" -- "$cur") )
+        return 0
+      fi
+      if [[ "$sub" == "refresh" && $COMP_CWORD -eq 3 ]]; then
+        _bakery_complete_domains "$cur"
+      fi
+      ;;
+    pat)
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W "set get" -- "$cur") )
+      fi
+      ;;
+    env)
+      if [[ $COMP_CWORD -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W "set get" -- "$cur") )
+        return 0
+      fi
+      if [[ "$sub" =~ ^(set|get)$ && $COMP_CWORD -eq 3 ]]; then
+        _bakery_complete_domains "$cur"
+      fi
+      ;;
+    podman)
+      # Let default bash completion handle podman flags/args if available.
+      if declare -F _completion_loader >/dev/null 2>&1; then
+        _completion_loader podman >/dev/null 2>&1 || true
+      fi
+      if declare -F _podman >/dev/null 2>&1; then
+        COMP_WORDS=(podman "${COMP_WORDS[@]:2}")
+        COMP_CWORD=$((COMP_CWORD - 1))
+        _podman
+      fi
+      ;;
+  esac
+
+  return 0
+}
+
+complete -o bashdefault -o default -F _bakery bakery

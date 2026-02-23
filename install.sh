@@ -179,6 +179,17 @@ install_bin() {
   ln -sfn "$BAKERY_ROOT/agent/bin/bakery" "$BAKERY_BIN"
 }
 
+install_bash_completion() {
+  local src="$BAKERY_ROOT/agent/completions/bash/bakery"
+  if [[ ! -f "$src" ]]; then
+    return 0
+  fi
+
+  mkdir -p /etc/bash_completion.d
+  cp "$src" /etc/bash_completion.d/bakery
+  chmod 644 /etc/bash_completion.d/bakery
+}
+
 install_systemd_unit() {
   cp "$BAKERY_ROOT/agent/systemd/bakery-agent.service" /etc/systemd/system/bakery-agent.service
   systemctl daemon-reload
@@ -211,6 +222,7 @@ main() {
   ensure_key
   ensure_config
   install_bin
+  install_bash_completion
   install_logrotate_config
   install_sudoers_policy
   install_systemd_unit

@@ -15,6 +15,16 @@ sudo bakery setup
 sudo systemctl restart bakery-agent.service
 ```
 
+## Autocomplete
+
+Bash autocomplete is installed automatically to `/etc/bash_completion.d/bakery` when you run `install.sh` (including updates via `bakery update`).
+
+Open a new shell session, or load it in your current shell:
+
+```bash
+source /etc/bash_completion.d/bakery
+```
+
 ## Core Commands
 
 ```bash
