@@ -140,6 +140,13 @@ Deploy from a different branch:
 bakery deploy app.example.com --repo https://github.com/org/repo.git --branch develop
 ```
 
+## Multiple Exposed Ports
+
+If your image exposes multiple ports (for example HTTP + WebSocket + streaming), bakery now publishes all `EXPOSE`d ports automatically from the configured host port range.
+
+- The primary HTTP port is bound to `127.0.0.1` and routed via Nginx.
+- Additional exposed ports are bound on `0.0.0.0` so they are reachable directly.
+
 ## Private Repos
 
 Store your GitHub PAT in encrypted form:

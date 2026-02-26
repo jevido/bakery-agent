@@ -303,20 +303,39 @@ run_stage() {
   log "INFO" "[$stage] $*"
 }
 
-detect_expose() {
+get_exposed_ports() {
   local image="$1"
-  local exposed
-  exposed="$(podman_exec image inspect --format '{{json .Config.ExposedPorts}}' "$image" 2>/dev/null || true)"
-  if [[ -z "$exposed" || "$exposed" == "null" || "$exposed" == "{}" ]]; then
-    printf 'false\n'
-  else
-    printf 'true\n'
-  fi
+  podman_exec image inspect "$image" | jq -r '
+    .[0].Config.ExposedPorts // {}
+    | keys
+    | map(select(test("^[0-9]+/(tcp|udp)$")))
+    | sort_by((split("/")[0] | tonumber), (split("/")[1]))
+    | .[]
+  '
 }
 
-get_first_container_port() {
-  local image="$1"
-  podman_exec image inspect --format '{{range $k, $v := .Config.ExposedPorts}}{{$k}}{{break}}{{end}}' "$image" | awk -F'/' '{print $1}'
+select_primary_container_port() {
+  local -a exposed_specs=("$@")
+  local spec preferred
+  local -a preferred_ports=(80 8080 3000 5000 5173)
+
+  for preferred in "${preferred_ports[@]}"; do
+    for spec in "${exposed_specs[@]}"; do
+      if [[ "$spec" == "$preferred/tcp" ]]; then
+        printf '%s\n' "$preferred"
+        return 0
+      fi
+    done
+  done
+
+  for spec in "${exposed_specs[@]}"; do
+    if [[ "$spec" == */tcp ]]; then
+      printf '%s\n' "${spec%/*}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 generate_nginx_conf() {
@@ -498,8 +517,10 @@ run_deploy() {
   run_stage "0" "PUSH trigger acknowledged for $domain"
 
   local app_dir clone_dir image_name image_id expose port container_port env_tmp container_name container_id
+  local primary_container_port next_port host_port bind_addr spec protocol
   local effective_cpu_limit effective_memory_limit
-  local -a common_run_args
+  local -a common_run_args exposed_specs publish_args published_pairs
+  local -A reserved_ports
   local previous_container_id previous_repo previous_branch previous_image previous_port previous_expose state_repo state_branch
   app_dir="$(domain_dir "$domain")"
   clone_dir="$(mktemp -d "$BAKERY_TMP_ROOT/bakery-src-${domain}.XXXXXX")"
@@ -555,9 +576,12 @@ run_deploy() {
   rm -rf "$clone_dir"
 
   run_stage "4" "Running container"
-  expose="$(detect_expose "$image_name")"
+  mapfile -t exposed_specs < <(get_exposed_ports "$image_name")
+  expose="false"
   port=0
   container_port=""
+  publish_args=()
+  published_pairs=()
 
   decrypt_env_to_file "$domain" "$env_tmp"
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
@@ -583,15 +607,44 @@ run_deploy() {
     run_stage "4" "Applying resource limits cpu=${effective_cpu_limit:-none} memory=${effective_memory_limit:-none}"
   fi
 
-  if [[ "$expose" == "true" ]]; then
-    container_port="$(get_first_container_port "$image_name")"
-    [[ -n "$container_port" ]] || die "EXPOSE detected but no container port parsed"
-    port="$(next_free_port "$PORT_RANGE_START" "$PORT_RANGE_END")" || die "No free port available in configured range"
-    container_id="$(podman_exec run "${common_run_args[@]}" \
-      -p "127.0.0.1:${port}:${container_port}" \
-      "$image_name")"
-  else
-    container_id="$(podman_exec run "${common_run_args[@]}" "$image_name")"
+  if ((${#exposed_specs[@]} > 0)); then
+    primary_container_port="$(select_primary_container_port "${exposed_specs[@]}" || true)"
+    next_port="$PORT_RANGE_START"
+
+    for spec in "${exposed_specs[@]}"; do
+      container_port="${spec%/*}"
+      protocol="${spec#*/}"
+      host_port=""
+
+      while (( next_port <= PORT_RANGE_END )); do
+        if [[ -n "${reserved_ports[$next_port]:-}" ]] || is_port_in_use "$next_port"; then
+          next_port=$((next_port + 1))
+          continue
+        fi
+        host_port="$next_port"
+        reserved_ports["$host_port"]=1
+        next_port=$((next_port + 1))
+        break
+      done
+
+      [[ -n "$host_port" ]] || die "No free port available in configured range for ${container_port}/${protocol}"
+
+      bind_addr="0.0.0.0"
+      if [[ -n "$primary_container_port" && "$protocol" == "tcp" && "$container_port" == "$primary_container_port" ]]; then
+        bind_addr="127.0.0.1"
+        port="$host_port"
+        expose="true"
+      fi
+
+      publish_args+=(-p "${bind_addr}:${host_port}:${container_port}/${protocol}")
+      published_pairs+=("${container_port}/${protocol}->${bind_addr}:${host_port}")
+    done
+  fi
+
+  container_id="$(podman_exec run "${common_run_args[@]}" "${publish_args[@]}" "$image_name")"
+
+  if [[ "${#published_pairs[@]}" -gt 0 ]]; then
+    run_stage "4" "Published ports: ${published_pairs[*]}"
   fi
 
   mkdir -p "$app_dir"
