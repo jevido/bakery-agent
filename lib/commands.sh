@@ -406,6 +406,9 @@ cmd_pat_set() {
   printf '%s' "$pat" > "$tmp"
   openssl enc -aes-256-cbc -pbkdf2 -in "$tmp" -out "$BAKERY_GITHUB_PAT_FILE" -pass "file:$BAKERY_KEY_FILE"
   chmod 600 "$BAKERY_GITHUB_PAT_FILE"
+  if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
+    chown bakery:bakery "$BAKERY_GITHUB_PAT_FILE"
+  fi
 
   log "INFO" "Stored encrypted GitHub PAT at $BAKERY_GITHUB_PAT_FILE"
 }
