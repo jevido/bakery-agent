@@ -479,7 +479,7 @@ cmd_pat_get() {
   [[ -f "$BAKERY_KEY_FILE" ]] || cli_die "$CLI_EXIT_PREREQ" "Secrets key not found at $BAKERY_KEY_FILE"
   [[ -f "$BAKERY_GITHUB_PAT_FILE" ]] || cli_die "$CLI_EXIT_STATE" "No encrypted GitHub PAT found at $BAKERY_GITHUB_PAT_FILE"
 
-  openssl enc -aes-256-cbc -pbkdf2 -d -in "$BAKERY_GITHUB_PAT_FILE" -out /dev/stdout -pass "file:$BAKERY_KEY_FILE"
+  openssl enc -aes-256-cbc -pbkdf2 -d -in "$BAKERY_GITHUB_PAT_FILE" -pass "file:$BAKERY_KEY_FILE"
 }
 
 cmd_list() {
@@ -692,7 +692,7 @@ cmd_env_get() {
   [[ -f "$enc" ]] || cli_die "$CLI_EXIT_STATE" "No encrypted env file found for $domain"
   [[ -f "$BAKERY_KEY_FILE" ]] || cli_die "$CLI_EXIT_PREREQ" "Secrets key not found at $BAKERY_KEY_FILE"
 
-  openssl enc -aes-256-cbc -pbkdf2 -d -in "$enc" -out /dev/stdout -pass "file:$BAKERY_KEY_FILE"
+  openssl enc -aes-256-cbc -pbkdf2 -d -in "$enc" -pass "file:$BAKERY_KEY_FILE"
 }
 
 cmd_update() {

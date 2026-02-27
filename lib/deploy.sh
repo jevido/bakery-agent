@@ -207,7 +207,7 @@ is_github_https_repo() {
 
 read_github_pat() {
   [[ -f "$BAKERY_GITHUB_PAT_FILE" ]] || return 1
-  openssl enc -aes-256-cbc -pbkdf2 -d -in "$BAKERY_GITHUB_PAT_FILE" -out /dev/stdout -pass "file:$BAKERY_KEY_FILE" 2>/dev/null || return 1
+  openssl enc -aes-256-cbc -pbkdf2 -d -in "$BAKERY_GITHUB_PAT_FILE" -pass "file:$BAKERY_KEY_FILE" 2>/dev/null || return 1
 }
 
 clone_repo() {
