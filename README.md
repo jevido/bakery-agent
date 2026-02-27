@@ -28,7 +28,7 @@ source /etc/bash_completion.d/bakery
 ## Core Commands
 
 ```bash
-bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]
 bakery remove <domain>
 bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
 bakery setup
@@ -78,7 +78,7 @@ Required secrets:
 You can generate a deploy SSH key and a prefilled workflow template with:
 
 ```bash
-sudo bakery bootstrap app.example.com --repo https://github.com/org/repo.git --branch main --host your.vps.host --ssh-user bakery
+bakery bootstrap app.example.com --repo https://github.com/org/repo.git --branch main --host your.vps.host --ssh-user bakery
 ```
 
 Note: the `bakery` user must have a valid login shell (for example `/bin/bash`) so GitHub SSH actions can execute `bakery ...` commands.

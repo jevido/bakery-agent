@@ -340,25 +340,40 @@ select_primary_container_port() {
 
 generate_nginx_conf() {
   local domain="$1"
-  local port="$2"
+  shift
+  local -a routes=("$@")
   local app_conf
   app_conf="$(nginx_app_conf_file "$domain")"
 
-  cat > "$app_conf" <<CFG
+  {
+    cat <<CFG
 server {
     listen 80;
     listen [::]:80;
     server_name $domain;
-
-    location / {
+CFG
+    local route path port
+    for route in "${routes[@]}"; do
+      path="${route%%|*}"
+      port="${route##*|}"
+      cat <<CFG
+    location $path {
         proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
     }
-}
 CFG
+    done
+    printf '}\n'
+  } > "$app_conf"
 
   if [[ -d "$NGINX_SITES_AVAILABLE" && -d "$NGINX_SITES_ENABLED" ]]; then
     run_privileged cp "$app_conf" "$NGINX_SITES_AVAILABLE/$domain.conf" || \
@@ -409,9 +424,10 @@ health_check() {
   local expose="$2"
   local port="$3"
   local container_id="$4"
+  local custom_forwarding="${5:-false}"
   local attempts=0
 
-  if [[ "$expose" == "true" ]]; then
+  if [[ "$expose" == "true" && "$custom_forwarding" != "true" ]]; then
     while (( attempts < DEPLOY_HEALTH_RETRIES )); do
       if curl -fsS "http://127.0.0.1:$port/" >/dev/null 2>&1; then
         return 0
@@ -474,6 +490,7 @@ run_deploy() {
   podman_rootless_preflight
 
   local repo_override="" branch_override="" cpu_override="" memory_override=""
+  local -a forward_specs=()
   while (($#)); do
     case "$1" in
       --repo)
@@ -483,18 +500,23 @@ run_deploy() {
         ;;
       --branch)
         shift
-        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
+        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
         branch_override="$1"
         ;;
       --cpu)
         shift
-        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
+        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
         cpu_override="$1"
         ;;
       --memory)
         shift
-        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
+        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
         memory_override="$1"
+        ;;
+      --forward)
+        shift
+        [[ $# -gt 0 ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
+        forward_specs+=("$1")
         ;;
       *)
         cli_usage "unknown deploy option: $1"
@@ -651,20 +673,24 @@ run_deploy() {
   state_write "$domain" "$state_repo" "$container_id" "$image_id" "$port" "starting" "$expose" "$previous_container_id" "$state_branch"
 
   run_stage "5" "Health checking"
-  if ! health_check "$domain" "$expose" "$port" "$container_id"; then
+  if ! health_check "$domain" "$expose" "$port" "$container_id" "$custom_forwarding"; then
     die "Deployment failed health checks; failed container left running for debugging"
   fi
 
   if [[ "$expose" == "true" && "$NGINX_ENABLED" == "1" ]]; then
     run_stage "6" "Configuring nginx + SSL"
-    generate_nginx_conf "$domain" "$port"
+    generate_nginx_conf "$domain" "${nginx_routes[@]}"
     if command -v nginx >/dev/null 2>&1; then
       run_privileged nginx -t || die "Failed nginx config test; ensure bakery can sudo nginx (or run deploy as root)."
       run_privileged systemctl reload nginx || run_privileged nginx -s reload || true
     fi
     setup_ssl "$domain"
-    run_stage "6" "Verifying nginx cutover"
-    verify_nginx_cutover "$domain" || die "Nginx cutover failed; previous container kept running"
+    if [[ "$custom_forwarding" == "true" ]]; then
+      run_stage "6" "Skipping nginx cutover probe for custom forwarded routes"
+    else
+      run_stage "6" "Verifying nginx cutover"
+      verify_nginx_cutover "$domain" || die "Nginx cutover failed; previous container kept running"
+    fi
   else
     run_stage "6" "Skipping routing (no EXPOSE or nginx disabled)"
   fi

@@ -46,7 +46,7 @@ print_usage() {
 bakery - lightweight VPS deployment agent
 
 Usage:
-  bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]
+  bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]
   bakery podman <podman-args...>
   bakery remove <domain>
   bakery bootstrap <domain> [--repo <git-url>] [--branch <name>] [--host <vps-host>] [--ssh-user <user>]
@@ -68,7 +68,7 @@ USAGE
 
 cmd_deploy() {
   local domain="${1:-}"
-  [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>]"
+  [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
   shift || true
   run_deploy "$domain" "$@"
 }

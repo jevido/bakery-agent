@@ -33,11 +33,11 @@ _bakery() {
 
   case "$cmd" in
     deploy)
-      if [[ "$prev" =~ ^(--repo|--branch|--cpu|--memory)$ ]]; then
+      if [[ "$prev" =~ ^(--repo|--branch|--cpu|--memory|--forward)$ ]]; then
         return 0
       fi
       if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--repo --branch --cpu --memory" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--repo --branch --cpu --memory --forward" -- "$cur") )
         return 0
       fi
       if [[ $COMP_CWORD -eq 2 ]]; then
