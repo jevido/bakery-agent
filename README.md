@@ -63,7 +63,7 @@ jobs:
       - name: Deploy via bakery-agent
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.BAKERY_HOST }}
           username: bakery
           key: ${{ secrets.BAKERY_SSH_KEY }}
           script: |
@@ -71,7 +71,7 @@ jobs:
 ```
 
 Required secrets:
-- `VPS_HOST`
+- `BAKERY_HOST`
 - `BAKERY_SSH_KEY`
 - `APP_DOMAIN`
 
