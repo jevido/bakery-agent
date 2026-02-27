@@ -482,6 +482,11 @@ run_deploy() {
 
   load_config
   ensure_base_dirs
+
+  if [[ "$(id -un)" != "bakery" ]]; then
+    cli_die "$CLI_EXIT_PREREQ" "Deploy must run as bakery user (not root)"
+  fi
+
   require_cmd git
   require_cmd jq
   require_cmd podman

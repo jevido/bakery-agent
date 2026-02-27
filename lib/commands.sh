@@ -66,10 +66,48 @@ Usage:
 USAGE
 }
 
+exec_as_bakery() {
+  local -a cmd=("$0" "$@")
+
+  id bakery >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User bakery does not exist"
+
+  if [[ "${BAKERY_REEXEC_AS_BAKERY:-0}" == "1" ]]; then
+    cli_die "$CLI_EXIT_PREREQ" "Failed to switch to bakery user for deploy"
+  fi
+
+  if command -v runuser >/dev/null 2>&1; then
+    exec runuser -u bakery -- env BAKERY_REEXEC_AS_BAKERY=1 "${cmd[@]}"
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo -u bakery -H env BAKERY_REEXEC_AS_BAKERY=1 "${cmd[@]}"
+  fi
+
+  cli_die "$CLI_EXIT_PREREQ" "Cannot switch to bakery user; install runuser or sudo"
+}
+
+ensure_domain_owned_by_bakery() {
+  local domain="$1"
+  local dir
+
+  [[ "$(id -u)" -eq 0 ]] || return 0
+  id bakery >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User bakery does not exist"
+
+  dir="$(domain_dir "$domain")"
+  mkdir -p "$dir"
+  chown -R bakery:bakery "$dir"
+}
+
 cmd_deploy() {
   local domain="${1:-}"
   [[ -n "$domain" ]] || cli_usage "usage: bakery deploy <domain> [--repo <git-url>] [--branch <name>] [--cpu <cpus>] [--memory <limit>] [--forward <port>|<path:port>]"
   shift || true
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    ensure_domain_owned_by_bakery "$domain"
+    exec_as_bakery deploy "$domain" "$@"
+  fi
+
   run_deploy "$domain" "$@"
 }
 
@@ -270,6 +308,8 @@ cmd_bootstrap() {
   else
     log "WARN" "SSH user $ssh_user does not exist; public key was not installed into authorized_keys"
   fi
+
+  ensure_domain_owned_by_bakery "$domain"
 
   local deploy_cmd
   deploy_cmd="bakery deploy $domain"
@@ -586,6 +626,11 @@ cmd_env_set() {
   local domain="${1:-}"
   [[ -n "$domain" ]] || cli_usage "usage: bakery env set <domain>"
 
+  if [[ "$(id -u)" -eq 0 ]]; then
+    ensure_domain_owned_by_bakery "$domain"
+    exec_as_bakery env set "$domain"
+  fi
+
   command -v openssl >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "Required command not found: openssl"
   [[ -f "$BAKERY_KEY_FILE" ]] || cli_die "$CLI_EXIT_PREREQ" "Secrets key not found at $BAKERY_KEY_FILE"
 
@@ -612,6 +657,11 @@ cmd_env_set() {
 cmd_env_get() {
   local domain="${1:-}"
   [[ -n "$domain" ]] || cli_usage "usage: bakery env get <domain>"
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    ensure_domain_owned_by_bakery "$domain"
+    exec_as_bakery env get "$domain"
+  fi
 
   local enc
   enc="$(env_enc_file "$domain")"

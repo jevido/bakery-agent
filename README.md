@@ -45,6 +45,9 @@ bakery env get <domain>
 bakery update
 ```
 
+`bakery deploy` always runs as the `bakery` user. If invoked by `root`, it automatically re-executes as `bakery`.
+`bakery env set/get` behave the same way. `bakery bootstrap` also ensures app files under `/etc/bakery/apps/<domain>/` are owned by `bakery`.
+
 ## Deployment from GitHub Actions
 
 Create `.github/workflows/deploy.yml` in your app repo:
