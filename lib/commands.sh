@@ -68,11 +68,20 @@ USAGE
 
 exec_as_bakery() {
   local -a cmd=("$0" "$@")
+  local bakery_home
 
   id bakery >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User bakery does not exist"
 
   if [[ "${BAKERY_REEXEC_AS_BAKERY:-0}" == "1" ]]; then
     cli_die "$CLI_EXIT_PREREQ" "Failed to switch to bakery user for deploy"
+  fi
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    bakery_home="$(getent passwd bakery | cut -d: -f6)"
+    if [[ -n "$bakery_home" ]]; then
+      mkdir -p "$bakery_home/.local/share/nano"
+      chown -R bakery:bakery "$bakery_home/.local"
+    fi
   fi
 
   if command -v runuser >/dev/null 2>&1; then
@@ -363,10 +372,10 @@ cmd_setup() {
 
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs passt nginx certbot python3-certbot-nginx openssl jq git curl logrotate sudo
+  apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs passt nginx certbot python3-certbot-nginx openssl jq git curl logrotate sudo nano
 
   if id bakery >/dev/null 2>&1; then
-    local subuid_start subgid_start bakery_uid bakery_home runtime_dir cfg_root cfg_dir storage_cfg containers_cfg graphroot
+    local subuid_start subgid_start bakery_uid bakery_home runtime_dir cfg_root cfg_dir storage_cfg containers_cfg graphroot profile_file nano_dir
     subuid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subuid 2>/dev/null || echo 100000)"
     subgid_start="$(awk -F: 'BEGIN{m=100000} NF>=3 {e=$2+$3; if (e>m) m=e} END{print m}' /etc/subgid 2>/dev/null || echo 100000)"
 
@@ -386,8 +395,9 @@ cmd_setup() {
     containers_cfg="$cfg_dir/containers.conf"
     graphroot="$bakery_home/.local/share/containers/storage"
 
-    mkdir -p "$runtime_dir" "$runtime_dir/containers" "$cfg_dir" "$graphroot"
-    chown -R bakery:bakery "$runtime_dir" "$cfg_root" "$bakery_home/.local/share/containers"
+    nano_dir="$bakery_home/.local/share/nano"
+    mkdir -p "$runtime_dir" "$runtime_dir/containers" "$cfg_dir" "$graphroot" "$nano_dir"
+    chown -R bakery:bakery "$runtime_dir" "$cfg_root" "$bakery_home/.local"
     chmod 700 "$runtime_dir"
 
     cat > "$storage_cfg" <<CFG
@@ -415,6 +425,16 @@ CFG
     if command -v loginctl >/dev/null 2>&1; then
       loginctl enable-linger bakery >/dev/null 2>&1 || true
       loginctl start-user bakery >/dev/null 2>&1 || true
+    fi
+
+    if [[ -n "$bakery_home" ]]; then
+      profile_file="$bakery_home/.profile"
+      touch "$profile_file"
+      if ! grep -qxF 'export EDITOR=nano' "$profile_file" 2>/dev/null; then
+        printf '\nexport EDITOR=nano\n' >> "$profile_file"
+      fi
+      chown bakery:bakery "$profile_file"
+      chmod 644 "$profile_file"
     fi
   fi
 
@@ -646,7 +666,11 @@ cmd_env_set() {
     openssl enc -aes-256-cbc -pbkdf2 -d -in "$enc" -out "$tmp" -pass "file:$BAKERY_KEY_FILE"
   fi
 
-  "${EDITOR:-vi}" "$tmp"
+  if [[ "${EDITOR:-nano}" == "nano" ]]; then
+    mkdir -p "${HOME:-}/.local/share/nano" >/dev/null 2>&1 || true
+  fi
+
+  "${EDITOR:-nano}" "$tmp"
 
   openssl enc -aes-256-cbc -pbkdf2 -in "$tmp" -out "$enc" -pass "file:$BAKERY_KEY_FILE"
   chmod 600 "$enc"
