@@ -182,12 +182,13 @@ podman_exec_as_user() {
   shift
 
   id "$target_user" >/dev/null 2>&1 || cli_die "$CLI_EXIT_PREREQ" "User $target_user does not exist"
-  local uid home runtime_dir graphroot cfg_dir storage_cfg containers_cfg
+  local uid home runtime_dir graphroot cfg_root cfg_dir storage_cfg containers_cfg
   uid="$(id -u "$target_user")"
   home="$(getent passwd "$target_user" | cut -d: -f6)"
   runtime_dir="/run/user/$uid"
   graphroot="$home/.local/share/containers/storage"
-  cfg_dir="$home/.config/containers"
+  cfg_root="$home/.config"
+  cfg_dir="$cfg_root/containers"
   storage_cfg="$cfg_dir/storage.conf"
   containers_cfg="$cfg_dir/containers.conf"
 
@@ -197,7 +198,7 @@ podman_exec_as_user() {
       loginctl start-user "$target_user" >/dev/null 2>&1 || true
     fi
     mkdir -p "$runtime_dir" "$runtime_dir/containers" "$cfg_dir" "$graphroot"
-    chown -R "$target_user:$target_user" "$runtime_dir" "$cfg_dir" "$graphroot" >/dev/null 2>&1 || true
+    chown -R "$target_user:$target_user" "$runtime_dir" "$cfg_root" "$graphroot" >/dev/null 2>&1 || true
     chmod 700 "$runtime_dir" "$runtime_dir/containers" >/dev/null 2>&1 || true
   fi
 
