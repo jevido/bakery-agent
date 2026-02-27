@@ -543,10 +543,10 @@ run_deploy() {
   run_stage "0" "Acquired deploy lock for $domain"
   run_stage "0" "PUSH trigger acknowledged for $domain"
 
-  local app_dir clone_dir image_name image_id expose port container_port env_tmp container_name container_id
+  local app_dir clone_dir image_name image_id expose port container_port env_tmp container_name container_id custom_forwarding
   local primary_container_port next_port host_port bind_addr spec protocol
   local effective_cpu_limit effective_memory_limit
-  local -a common_run_args exposed_specs publish_args published_pairs
+  local -a common_run_args exposed_specs publish_args published_pairs nginx_routes
   local -A reserved_ports
   local previous_container_id previous_repo previous_branch previous_image previous_port previous_expose state_repo state_branch
   app_dir="$(domain_dir "$domain")"
@@ -559,6 +559,8 @@ run_deploy() {
   env_tmp="$(mktemp "$BAKERY_TMP_ROOT/bakery-env-${domain}.XXXXXX")"
   container_name="bakery-$(echo "$domain" | tr '.' '-')-$(date +%s)"
   container_id=""
+  custom_forwarding="false"
+  nginx_routes=()
 
   # Podman is executed as the rootless bakery user; ensure staged files are readable there.
   if [[ "$(id -u)" -eq 0 ]] && id bakery >/dev/null 2>&1; then
@@ -676,6 +678,10 @@ run_deploy() {
 
   mkdir -p "$app_dir"
   state_write "$domain" "$state_repo" "$container_id" "$image_id" "$port" "starting" "$expose" "$previous_container_id" "$state_branch"
+
+  if [[ "$expose" == "true" && "${#nginx_routes[@]}" -eq 0 ]]; then
+    nginx_routes+=("/|$port")
+  fi
 
   run_stage "5" "Health checking"
   if ! health_check "$domain" "$expose" "$port" "$container_id" "$custom_forwarding"; then
