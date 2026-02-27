@@ -339,7 +339,7 @@ cmd_setup() {
 
     bakery_uid="$(id -u bakery)"
     bakery_home="$(getent passwd bakery | cut -d: -f6)"
-    runtime_dir="$BAKERY_TMP_ROOT/bakery-xdg-$bakery_uid"
+    runtime_dir="/run/user/$bakery_uid"
     cfg_root="$bakery_home/.config"
     cfg_dir="$cfg_root/containers"
     storage_cfg="$cfg_dir/storage.conf"
