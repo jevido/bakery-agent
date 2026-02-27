@@ -289,7 +289,7 @@ SSH details:
 - Public key file: $pub_file
 - Host: $host
 
-Add this private key to GitHub secret VPS_SSH_KEY:
+Add this private key to GitHub secret BAKERY_SSH_KEY:
 $(cat "$key_file")
 
 GitHub Actions workflow template (.github/workflows/deploy.yml):
@@ -308,7 +308,7 @@ jobs:
         with:
           host: "$host"
           username: "$ssh_user"
-          key: \${{ secrets.VPS_SSH_KEY }}
+          key: \${{ secrets.BAKERY_SSH_KEY }}
           script: |
             $deploy_cmd
 EOF

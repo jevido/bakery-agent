@@ -65,14 +65,14 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: bakery
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ secrets.BAKERY_SSH_KEY }}
           script: |
             bakery deploy ${{ secrets.APP_DOMAIN }}
 ```
 
 Required secrets:
 - `VPS_HOST`
-- `VPS_SSH_KEY`
+- `BAKERY_SSH_KEY`
 - `APP_DOMAIN`
 
 You can generate a deploy SSH key and a prefilled workflow template with:

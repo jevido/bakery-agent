@@ -203,7 +203,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: bakery
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ secrets.BAKERY_SSH_KEY }}
           script: |
             bakery deploy ${{ secrets.APP_DOMAIN }}
 ```
@@ -212,7 +212,7 @@ jobs:
 | Secret         | Description                                       |
 |----------------|---------------------------------------------------|
 | `VPS_HOST`     | IP address or hostname of the VPS                 |
-| `VPS_SSH_KEY`  | SSH private key for the `bakery` user             |
+| `BAKERY_SSH_KEY`  | SSH private key for the `bakery` user             |
 | `APP_DOMAIN`   | Domain the app will be served on (e.g. `app.example.com`) |
 
 The agent determines the git repo URL from the domain's `state.json` (set during first deploy or via `bakery env set`).
